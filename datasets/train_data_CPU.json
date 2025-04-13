@@ -1,1 +1,2179 @@
+{
+    "instruction": "进程调度算法",
+    "input": "Linux的完全公平调度器（CFS）如何计算vruntime？",
+    "output": "CFS通过公式vruntime = 实际运行时间 * NICE_0_LOAD / 权重 计算。权重由进程优先级转换而来，优先级越高权重越大，vruntime增长越慢，从而获得更多CPU时间。"
+}
+{
+    "instruction": "进程切换步骤",
+    "input": "Linux进程切换涉及哪些关键操作？",
+    "output": "1. 保存当前进程的硬件上下文到task_struct的thread_struct\n2. 切换页全局目录（CR3寄存器）更新地址空间\n3. 切换内核栈和thread_info结构\n4. 恢复新进程的硬件上下文\n由schedule()函数触发，发生在核心态。"
+}
+{
+    "instruction": "内核线程创建",
+    "input": "如何在Linux内核中创建守护线程？",
+    "output": "使用kthread_create()或kthread_run()：\n#include <linux/kthread.h>\nstruct task_struct *task = kthread_run(thread_func, data, \"mykthread\");\n线程函数需调用set_current_state(TASK_INTERRUPTIBLE)和schedule()实现阻塞。"
+}
+{
+    "instruction": "多处理机调度",
+    "input": "Windows如何管理多CPU的线程调度？",
+    "output": "1. 每个CPU维护32个就绪队列和就绪位图\n2. 线程有亲合掩码指定允许运行的CPU\n3. 空闲位图跟踪空闲CPU\n4. 调度时优先选择高优先级线程，若目标CPU被低优先级线程占用且符合亲合关系，可能触发抢占。"
+}
+{
+    "instruction": "中断处理优化",
+    "input": "DPC在Windows中断处理中的作用是什么？",
+    "output": "DPC（延迟过程调用）用于：\n1. 将非紧急的中断处理任务延后执行\n2. 缩短高IRQL级别的停留时间\n3. 统一处理调度请求\n例如网卡中断中，ISR仅保存数据包，DPC负责协议解析和传递。"
+}
+{
+    "instruction": "进程优先级调整",
+    "input": "Linux中如何动态调整普通进程的优先级？",
+    "output": "通过nice值（-20~19）和实时优先级（rt_priority）：\n1. setpriority()系统调用修改nice值\n2. sched_setscheduler()切换调度策略\n3. 内核根据交互性自动调整动态优先级\n示例：nice -n 5 ./program"
+}
+{
+    "instruction": "上下文切换开销",
+    "input": "哪些因素会影响进程上下文切换的性能？",
+    "output": "关键因素包括：\n1. TLB刷新频率（地址空间切换）\n2. 缓存局部性损失\n3. 硬件上下文保存大小（FPU/SSE寄存器）\n4. 调度器选择算法复杂度\n5. 内核锁竞争情况\n优化手段包括使用PCID、惰性FPU切换等。"
+}
+{
+    "instruction": "实时进程调度",
+    "input": "Linux实时进程的调度策略有哪些？",
+    "output": "两种实时策略：\n1. SCHED_FIFO：先进先出，无时间片限制\n2. SCHED_RR：时间片轮转，默认100ms\n优先级范围1-99（高于普通进程），通过sched_setscheduler()设置。"
+}
+{
+    "instruction": "线程状态转换",
+    "input": "Windows线程的7种状态如何转换？",
+    "output": "状态包括：就绪、备用、运行、等待、传输、终止、初始化。转换规则：\n1. 就绪→备用：被选择为某CPU的下个运行线程\n2. 运行→等待：主动等待同步对象\n3. 等待→就绪：同步对象触发信号\n4. 运行→终止：ExitThread()调用。"
+}
+{
+    "instruction": "CPU亲合性设置",
+    "input": "如何将Linux进程绑定到特定CPU核心？",
+    "output": "使用sched_setaffinity()：\n#include <sched.h>\ncpu_set_t set;\nCPU_ZERO(&set);\nCPU_SET(3, &set);\nsched_setaffinity(pid, sizeof(set), &set);\n或通过taskset命令：taskset -c 0,2 ./program"
+}
+{
+    "instruction": "中断优先级管理",
+    "input": "Windows中的IRQL级别如何影响中断处理？",
+    "output": "Windows使用32个IRQL级别（0-31）：\n1. PASSIVE_LEVEL（0）：用户态线程\n2. APC_LEVEL（1）：异步过程调用\n3. DISPATCH_LEVEL（2）：线程调度\n4. 设备中断级别（3-26）：硬件中断\n5. PROFILE_LEVEL（27）和CLOCK_LEVEL（28）\n6. IPI_LEVEL（29）和POWER_LEVEL（30）\n高IRQL中断可抢占低级别中断，执行时屏蔽同级及更低中断"
+}
+{
+    "instruction": "多核负载均衡",
+    "input": "Linux如何实现SMP系统中的负载均衡？",
+    "output": "通过CFS调度域分层结构：\n1. Socket域->Core域->Hyper-Thread域\n2. 定期运行load_balance()函数\n3. 迁移任务时考虑缓存热度\n4. 使用migration内核线程执行迁移\n5. 通过/proc/sys/kernel/sched_domain查看调度域拓扑"
+}
+{
+    "instruction": "自旋锁实现",
+    "input": "Linux在ARM架构下如何实现自旋锁？",
+    "output": "使用ARMv8的独占加载/存储指令：\nspin_lock()流程：\n1. wfe指令进入低功耗等待\n2. ldaxr获取独占访问权\n3. stxr尝试原子写入\n4. 循环直到获得锁\nspin_unlock()使用stlr释放锁并发送sev事件唤醒其他核"
+}
+{
+    "instruction": "延迟敏感任务优化",
+    "input": "如何减少Linux实时进程的调度延迟？",
+    "output": "优化措施：\n1. 设置CPU隔离（isolcpus内核参数）\n2. 使用cpuset将实时进程绑定到隔离核\n3. 关闭中断线程化（noirqbalance）\n4. 配置PREEMPT_RT实时内核补丁\n5. 设置SCHED_FIFO优先级高于50\n6. 禁用电源管理调控器（performance模式）"
+}
+{
+    "instruction": "APC机制应用",
+    "input": "Windows异步I/O完成如何通过APC通知？",
+    "output": "流程：\n1. 发起异步I/O时指定APC回调函数\n2. I/O管理器在IRP完成时排队用户模式APC\n3. 当线程进入可提醒状态（WaitForSingleObjectEx）\n4. 执行APC例程将数据复制到用户缓冲区\n代码示例：\nReadFileEx(hFile, ..., APC_CALLBACK);\nWaitForSingleObjectEx(INFINITE, TRUE);"
+}
+{
+    "instruction": "进程切换优化",
+    "input": "如何通过PCID技术优化TLB刷新？",
+    "output": "PCID（Process Context ID）技术：\n1. CR3寄存器的低12位存储PCID\n2. 切换地址空间时保留非全局TLB条目\n3. Linux使用ASID架构实现类似功能\n启用方法：\n编译内核时开启CONFIG_PCID\n查看/sys/kernel/debug/x86/tlb_pcid_enabled"
+}
+{
+    "instruction": "核间中断处理",
+    "input": "Linux如何实现CPU间的IPI通信？",
+    "output": "通过smp_call_function()：\n1. 目标CPU的call_single_queue队列\n2. 发送NMI或RESCHEDULE中断类型\n3. 接收方在中断处理中执行回调\n示例：\nsmp_call_function_single(cpu, func, info, 1);\n常用于TLB刷新、RCU回调处理等场景"
+}
+{
+    "instruction": "实时优先级配置",
+    "input": "Windows如何设置实时优先级线程？",
+    "output": "使用SetThreadPriority()和优先级类：\n1. 进程基优先级类设为REALTIME_PRIORITY_CLASS\n2. 线程优先级通过SetThreadPriority设置THREAD_PRIORITY_TIME_CRITICAL\n注意：需管理员权限，可能影响系统稳定性\n注册表限制：HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MESI协议如何保证多核缓存一致性？",
+    "output": "四种状态：\nModified（独占修改）\nExclusive（独占未修改）\nShared（共享）\nInvalid（无效）\n操作流程：\n1. 核A写数据时升级为Modified，发Invalidate给其他核\n2. 核B读时会触发核A写回内存并转为Shared状态\n3. 监听总线实现状态转换"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何动态修改Linux进程的调度策略？",
+    "output": "使用sched_setscheduler()系统调用：\nstruct sched_param param;\nparam.sched_priority = 99;\nsched_setscheduler(pid, SCHED_FIFO, &param);\n需root权限，优先级范围根据策略不同（1-99实时策略）"
+}
+{
+    "instruction": "中断线程化",
+    "input": "Linux中断线程化有什么优缺点？",
+    "output": "优点：\n1. 减少关中断时间\n2. 允许抢占和调度\n3. 优先级管理更方便\n缺点：\n1. 增加上下文切换开销\n2. 不适合高频中断场景\n启用方法：\n内核参数threadirqs或设置IRQ的smp_affinity"
+}
+{
+    "instruction": "NUMA优化",
+    "input": "如何在NUMA架构下优化进程内存分配？",
+    "output": "策略：\n1. numactl --cpubind/--membind绑定CPU和内存节点\n2. 使用mbind()系统调用设置内存策略\n3. 优先分配本地内存（MPOL_PREFERRED）\n4. 监控/proc/<pid>/numa_maps\n5. 启用内核的自动NUMA balancing（sysctl vm.numa_balancing=1）"
+}
+{
+    "instruction": "硬实时系统支持",
+    "input": "Linux如何实现硬实时调度？",
+    "output": "需要PREEMPT_RT补丁：\n1. 将大部分内核代码变为可抢占\n2. 中断处理线程化\n3. 自旋锁替换为mutex\n4. 高精度定时器支持\n验证方法：\ncyclictest -t1 -p 80 -n -i 100 -l 10000\n测量最大延迟时间"
+}
+{
+    "instruction": "上下文切换统计",
+    "input": "如何监测Linux系统的上下文切换频率？",
+    "output": "工具：\n1. vmstat 1（cs列）\n2. pidstat -w -p <pid>\n3. perf sched record/report\n4. /proc/<pid>/sched统计信息\n关键指标：voluntary_ctxt_switches（自愿）和nonvoluntary_ctxt_switches（非自愿）"
+}
+{
+    "instruction": "优先级继承机制",
+    "input": "Linux的实时互斥锁如何防止优先级反转？",
+    "output": "使用优先级继承互斥锁（PTHREAD_PRIO_INHERIT）：\n1. 低优先级线程持有锁时继承等待者的高优先级\n2. 通过pthread_mutexattr_setprotocol设置\n3. 需要CONFIG_RT_MUTEXES内核支持\n示例：\npthread_mutexattr_t attr;\npthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "x86架构下如何实现原子操作？",
+    "output": "使用LOCK指令前缀：\n1. LOCK CMPXCHG（CAS操作）\n2. LOCK XADD（原子加）\n3. MFENCE/SFENCE/LFENCE内存屏障\n示例代码：\n__atomic_add_fetch(&counter, 1, __ATOMIC_SEQ_CST);\n编译器会生成lock xadd指令"
+}
+{
+    "instruction": "中断延迟测量",
+    "input": "如何测试Linux系统的最大中断延迟？",
+    "output": "使用hackbench和示波器方法：\n1. 连接GPIO引脚产生外部中断\n2. 中断处理函数设置引脚电平\n3. 测量两个边沿的时间差\n或使用软件工具：\ncyclictest -t1 -p 99 -n -i 1000 -l 100000\n报告最大延迟值"
+}
+{
+    "instruction": "调度器统计信息",
+    "input": "如何获取CFS调度器的详细运行统计？",
+    "output": "查看调度器debugfs接口：\n/sys/kernel/debug/sched/\n重要文件：\ndebug：显示所有运行队列状态\nlatency_ns：调度延迟统计\nstats：cfs_rq的负载跟踪数据\n或使用perf sched命令分析"
+}
+{
+    "instruction": "实时时钟管理",
+    "input": "Linux如何实现高精度定时器？",
+    "output": "基于hrtimer机制：\n1. 使用TSC或HPET硬件时钟源\n2. 红黑树管理定时事件\n3. 支持纳秒级精度\nAPI：\nclock_gettime(CLOCK_MONOTONIC, &ts);\ntimerfd_create()创建定时器文件描述符"
+}
+{
+    "instruction": "CPU热添加处理",
+    "input": "Linux如何处理动态添加的CPU核心？",
+    "output": "流程：\n1. ACPI发送CPU热插拔事件\n2. 内核调用cpu_up()初始化新核\n3. 启动migration内核线程\n4. 将新核加入调度域\n查看状态：\n/sys/devices/system/cpu/cpuN/online\n在线操作：echo 1 > online"
+}
+{
+    "instruction": "中断负载均衡",
+    "input": "如何将硬件中断分配到多核处理？",
+    "output": "方法：\n1. 设置smp_affinity：\necho 0x0f > /proc/irq/123/smp_affinity\n2. 使用irqbalance服务\n3. 配置MSI-X多向量中断\n4. 检查/proc/interrupts统计\n注意：避免将同一中断分配到超线程对"
+}
+{
+    "instruction": "进程迁移开销",
+    "input": "哪些因素影响进程在CPU间的迁移成本？",
+    "output": "主要开销源：\n1. 缓存失效（L1/L2/L3）\n2. TLB刷新\n3. NUMA远程内存访问\n4. 调度器决策延迟\n优化策略：\n设置CPU亲合性、使用CMT/Cache QoS技术、优先迁移内存本地进程"
+}
+{
+    "instruction": "抢占式内核特性",
+    "input": "Linux的CONFIG_PREEMPT选项有什么作用？",
+    "output": "三种模式：\n1. CONFIG_PREEMPT_NONE：无主动抢占（服务器）\n2. CONFIG_PREEMPT_VOLUNTARY：自愿抢占（桌面）\n3. CONFIG_PREEMPT：完全可抢占（实时）\n影响：\n降低最大延迟但增加上下文切换频率"
+}
+{
+    "instruction": "节能调度策略",
+    "input": "Linux的CPU节能模式如何影响调度？",
+    "output": "通过CPU idle驱动和调控器：\n1. 调度器倾向集中任务到少数核\n2. 其他核进入C-states节能状态\n3. 可能增加调度延迟\n查看调控器：\ncpupower frequency-info\n调整：cpupower frequency-set -g performance"
+}
+{
+    "instruction": "线程本地存储",
+    "input": "x86架构如何实现线程本地存储(TLS)？",
+    "output": "使用FS/GS段寄存器：\n1. 每个线程的FS_BASE存储TLS起始地址\n2. 通过wrmsr指令设置MSR_FS_BASE\n3. 编译器使用%fs:offset访问变量\n示例：\n__thread int tvar;\n生成指令：mov %fs:0x10, %eax"
+}
+{
+    "instruction": "调度策略配置",
+    "input": "Windows如何设置线程的I/O优先级？",
+    "output": "使用SetThreadPriority()：\nTHREAD_MODE_BACKGROUND_BEGIN：\n降低I/O和内存优先级\n或通过Job对象：\nCreateJobObject()设置JOB_OBJECT_LIMIT_IO_RATE_CONTROL\n影响：磁盘和网络I/O资源分配"
+}
+{
+    "instruction": "实时时钟校准",
+    "input": "Linux如何同步TSC时钟源？",
+    "output": "方法：\n1. 启动时通过CPU的Time Stamp Counter同步\n2. 检查constant_tsc和nonstop_tsc标志\n3. 使用CLOCK_MONOTONIC_RAW获取原始计数\n校准命令：\nchronyc sources  # NTP同步\nhwclock --hctosys  # 硬件时钟同步"
+}
+{
+    "instruction": "中断嵌套处理",
+    "input": "x86如何处理嵌套中断？",
+    "output": "流程：\n1. 当前中断处理中收到更高优先级中断\n2. 保存当前上下文到栈\n3. 加载新中断服务例程(ISR)\n4. 执行完成后IRET返回原中断\n限制：\n同一中断号默认不嵌套，需设置IRQF_DISABLED标志"
+}
+{
+    "instruction": "CPU拓扑检测",
+    "input": "如何获取系统的详细CPU拓扑信息？",
+    "output": "Linux命令：\nlscpu -e\n或查看/sys/devices/system/cpu/\n文件：\ncpuX/topology/physical_package_id（物理插槽）\ncpuX/topology/core_id（核心编号）\ncpuX/topology/thread_siblings（超线程兄弟）"
+}
+{
+    "instruction": "延迟敏感型任务",
+    "input": "如何设置cgroup限制CPU延迟？",
+    "output": "使用cpu控制器和cgroup v2：\n1. 创建cgroup：mkdir /sys/fs/cgroup/latency\n2. 设置cpu.max：100000 100000（周期和配额）\n3. 添加进程PID到cgroup.procs\n4. 设置cpu.weight调整份额\n5. 使用cpu.pressure监控压力"
+}
+{
+    "instruction": "虚拟化调度优化",
+    "input": "KVM如何优化虚拟CPU的调度？",
+    "output": "技术包括：\n1. CPU pinning绑定物理核\n2. 使用完全虚拟化中断控制器（APICv）\n3. 配置调度器为完全公平（SCHED_NORMAL）\n4. 启用virtio-balloon内存回收\n5. 使用vhost-net减少网络延迟\n查看/pro/cpuinfo中的steal时间监控CPU争抢"
+}
+{
+    "instruction": "中断风暴处理",
+    "input": "Linux如何防止网络接口的中断风暴？",
+    "output": "解决方法：\n1. 启用NAPI收包模式（轮询+中断）\n2. 设置/proc/irq/IRQ/smp_affinity分散中断\n3. 调整netdev_budget值（/sys/class/net/eth0/）\n4. 使用中断合并（ethtool -C eth0 rx-usecs 100）\n5. 升级支持MSI-X的网卡驱动"
+}
+{
+    "instruction": "调度器跟踪调试",
+    "input": "如何使用ftrace跟踪Linux调度事件？",
+    "output": "步骤：\n1. mount -t tracefs nodev /sys/kernel/tracing\n2. echo 1 > events/sched/enable\n3. echo function_graph > current_tracer\n4. cat trace_pipe\n关键事件：sched_switch, sched_wakeup, sched_migrate_task"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何检测Linux实时线程的调度延迟？",
+    "output": "工具链：\n1. cyclictest测量原始延迟\n2. tuna查看线程优先级\n3. trace-cmd记录调度事件\n4. perf sched latency分析\n5. /proc/sched_debug显示实时队列状态\n图形化工具：RTLA（Real-Time Linux Analysis）"
+}
+{
+    "instruction": "CPU缓存优化",
+    "input": "如何通过代码减少缓存未命中？",
+    "output": "编程技巧：\n1. 数据对齐（alignas(64)）\n2. 结构体字段按访问频率排列\n3. 使用__attribute__((hot))标记热点函数\n4. 预取指令（__builtin_prefetch）\n5. 避免伪共享（填充缓存行到64字节）"
+}
+{
+    "instruction": "多核启动顺序",
+    "input": "Linux内核如何初始化多核CPU？",
+    "output": "启动流程：\n1. Boot CPU执行start_kernel()\n2. 调用smp_prepare_cpus()初始化APIC\n3. 通过INIT/SIPI信号唤醒APs\n4. 每个AP执行cpu_init()和smp_callin()\n5. 调度器初始化后启动migration线程\n查看dmesg | grep APIC确认启动日志"
+}
 
+{
+    "instruction": "线程调度粒度",
+    "input": "Windows如何调整线程的时间片长度？",
+    "output": "通过注册表修改参数：\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl\\Win32PrioritySeparation\n取值0-2分别对应短（20ms）、中（60ms）、长（120ms）时间片\n实时进程默认使用不固定时间片"
+}
+{
+    "instruction": "缓存对齐优化",
+    "input": "如何避免多核环境下的伪共享问题？",
+    "output": "采用缓存行填充技术：\n1. 使用__attribute__((aligned(64))强制对齐\n2. 结构体设计时用padding填满64字节\n示例：\nstruct data {\n    int value;\n    char padding[60];\n} __attribute__((aligned(64)));"
+}
+{
+    "instruction": "中断延迟统计",
+    "input": "如何获取Linux内核的中断处理延迟数据？",
+    "output": "使用ftrace跟踪：\n1. echo 1 > /sys/kernel/debug/tracing/events/irq/enable\n2. cat /sys/kernel/debug/tracing/trace_pipe\n3. 分析irq_handler_entry和irq_handler_exit时间差\n或使用perf工具：\nperf record -e irq:irq_handler_entry -e irq:irq_handler_exit"
+}
+{
+    "instruction": "多核启动协议",
+    "input": "ARM架构下多核CPU的启动流程是怎样的？",
+    "output": "启动过程：\n1. 主核（CPU0）执行bootloader初始化\n2. 从核在WFE低功耗状态等待\n3. 主核通过SEV指令唤醒从核\n4. 从核跳转到secondary_startup函数\n5. 初始化本地中断控制器和MMU\n6. 加入调度系统参与任务执行"
+}
+{
+    "instruction": "实时进程监控",
+    "input": "如何跟踪Linux实时进程的调度情况？",
+    "output": "使用trace-cmd工具：\ntrace-cmd record -e sched_switch -f 'prio < 100'\ntrace-cmd report\n查看SCHED_FIFO/SCHED_RR进程的切换事件\n或使用/sys/kernel/debug/sched/rt_rq文件查看实时队列状态"
+}
+{
+    "instruction": "中断亲和性设置",
+    "input": "如何将特定中断绑定到指定CPU核心？",
+    "output": "修改smp_affinity文件：\necho 4 > /proc/irq/123/smp_affinity  # 绑定到CPU2\n使用十六进制位掩码格式\n永久生效需在/etc/rc.local添加设置\n注意：需关闭irqbalance服务"
+}
+{
+    "instruction": "调度策略影响",
+    "input": "SCHED_DEADLINE策略如何保证截止时间？",
+    "output": "参数设置：\n1. 运行时间（runtime）\n2. 周期（period）\n3. 截止时间（deadline）\n调度器保证每个周期内分配指定运行时间\n使用sched_setattr()系统调用配置\n适用于多媒体编码等实时任务"
+}
+{
+    "instruction": "核间通信机制",
+    "input": "Linux内核如何使用完成量（completion）进行核间同步？",
+    "output": "使用流程：\n1. 定义DECLARE_COMPLETION(c)\n2. 等待方调用wait_for_completion(&c)\n3. 完成方调用complete(&c)\n底层基于调度器实现跨核唤醒\n适用于生产者-消费者场景"
+}
+{
+    "instruction": "电源状态转换",
+    "input": "CPU的C-states如何影响调度决策？",
+    "output": "影响包括：\n1. 深度睡眠状态（C3+）唤醒延迟大\n2. 调度器倾向将任务集中到C1状态的核\n3. 使用intel_idle驱动自动状态切换\n监控工具：\nturbostat --show Pkg%pc2,Pkg%pc3,Pkg%pc6"
+}
+{
+    "instruction": "内存屏障应用",
+    "input": "Linux内核中哪些场景必须使用内存屏障？",
+    "output": "关键场景：\n1. 无锁数据结构操作\n2. 设备寄存器访问顺序\n3. CPU间共享变量修改\n4. 中断与进程上下文数据共享\n使用函数：\nmb()/rmb()/wmb()\nsmp_mb__before_atomic()\n用于保证内存访问顺序"
+}
+{
+    "instruction": "调度组配置",
+    "input": "cgroups v2如何限制CPU使用？",
+    "output": "配置步骤：\n1. mkdir /sys/fs/cgroup/cpu\n2. 设置cpu.max文件：100000 100000（周期和配额）\n3. 添加进程PID到cgroup.procs\n4. 可选设置cpu.weight分配权重\n查看统计：\ncat cpu.stat"
+}
+{
+    "instruction": "中断线程化配置",
+    "input": "如何将特定硬件中断转为线程处理？",
+    "output": "设置IRQ的affinity_hint：\necho 0 > /proc/irq/123/smp_affinity_hint\n然后启用线程化：\necho threaded > /proc/irq/123/thread_mode\n验证：\nps -eL | grep IRQ-123"
+}
+{
+    "instruction": "实时优先级继承",
+    "input": "Windows如何防止实时线程的优先级反转？",
+    "output": "使用优先级继承互斥体：\n1. 创建互斥体时指定bInheritHandles=TRUE\n2. 等待函数使用WaitForSingleObjectEx\n3. 内核自动提升持有者的临时优先级\n通过SetThreadPriorityBoost()控制继承特性"
+}
+{
+    "instruction": "缓存分区技术",
+    "input": "如何实现CPU缓存的隔离分配？",
+    "output": "Intel CAT技术：\n1. 使用pqos工具配置CLOS\n2. 分配特定缓存区域给关键进程\n3. 监控缓存使用情况\n命令示例：\npqos -e 'llc:0=0x000f;llc:1=0x00f0'\npqos -a 'cos:0=1,2;cos:1=3,4'"
+}
+{
+    "instruction": "调度延迟分析",
+    "input": "如何检测Linux进程的调度延迟原因？",
+    "output": "方法：\n1. perf sched record/report\n2. ftrace跟踪sched_switch事件\n3. 检查/proc/<pid>/schedstat\n4. 使用latencytop工具\n5. 分析内核调度器tick_stop统计"
+}
+{
+    "instruction": "核间锁竞争",
+    "input": "如何诊断多核环境下的自旋锁竞争？",
+    "output": "工具：\n1. lockstat工具统计锁等待时间\n2. perf record -e contention\n3. /proc/lock_stat\n4. 内核配置CONFIG_LOCK_STAT\n优化策略：\n分片锁设计、读写锁转换、减少临界区长度"
+}
+{
+    "instruction": "实时任务迁移",
+    "input": "如何禁止实时进程在CPU间迁移？",
+    "output": "方法：\n1. sched_setaffinity绑定CPU\n2. cpuset.cpus限制允许的CPU\n3. 内核参数isolcpus隔离核心\n4. 关闭NUMA负载均衡\n验证：\ntaskset -p <pid>"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何降低Linux网络中断处理延迟？",
+    "output": "优化措施：\n1. 启用NAPI GRO\n2. 增加netdev_budget值\n3. 设置IRQ亲和性到独立核\n4. 使用RPS/RFS分流流量\n5. 升级支持MSI-X的网卡驱动\n6. 采用XDP快速路径处理"
+}
+{
+    "instruction": "时钟源选择",
+    "input": "Linux如何切换不同的系统时钟源？",
+    "output": "查看可用时钟源：\ncat /sys/devices/system/clocksource/clocksource0/available_clocksource\n临时切换：\necho tsc > /sys/devices/system/clocksource/clocksource0/current_clocksource\n永久生效需修改启动参数clocksource=tsc"
+}
+{
+    "instruction": "进程冻结控制",
+    "input": "如何暂停进程的调度执行？",
+    "output": "使用cgroup freezer：\n1. mkdir /sys/fs/cgroup/freezer\n2. echo FROZEN > freezer.state\n3. echo <pid> > cgroup.procs\n恢复执行：\necho THAWED > freezer.state"
+}
+{
+    "instruction": "硬件性能计数",
+    "input": "如何利用PMU统计CPU缓存命中率？",
+    "output": "使用perf工具：\nperf stat -e L1-dcache-load-misses,L1-dcache-loads -p <pid>\n计算命中率：\n(1 - misses/loads) * 100%\n需要内核支持并启用PMU"
+}
+{
+    "instruction": "核间任务窃取",
+    "input": "CFS调度器如何实现负载均衡？",
+    "output": "机制：\n1. 定期运行load_balance()\n2. 根据调度域层次迁移任务\n3. 使用steal_tasks逻辑窃取任务\n4. 考虑缓存热度避免迁移\n查看统计：\n/proc/sys/kernel/sched_stat_avg"
+}
+{
+    "instruction": "虚拟化调度优化",
+    "input": "Xen如何优化虚拟CPU的调度延迟？",
+    "output": "技术：\n1. Credit2调度算法\n2. VCPU绑定物理核\n3. 实时优先级配置\n4. 启用NUMA亲和性\n5. 调整sched_credit_ms时间片\n监控工具：\nxentop -v"
+}
+{
+    "instruction": "中断优先级配置",
+    "input": "如何设置ARM GIC中断控制器优先级？",
+    "output": "使用设备树配置：\ninterrupts = <0 168 0xf04>;\n最后参数表示优先级\n或运行时配置：\nwritel(priority, gic_base + GIC_DIST_PRI + irq*4)\n数值越小优先级越高"
+}
+{
+    "instruction": "调度器扩展开发",
+    "input": "如何为Linux添加自定义调度策略？",
+    "output": "步骤：\n1. 实现sched_class结构体\n2. 注册到全局调度类链表\n3. 添加用户态接口sched_setscheduler\n4. 修改进程选择逻辑\n需要重新编译内核并验证调度行为"
+}
+{
+    "instruction": "CPU频率调控",
+    "input": "如何强制CPU运行在最大频率？",
+    "output": "使用cpupower工具：\ncpupower frequency-set -g performance\n或直接设置：\necho performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor\n验证：\ncpupower frequency-info"
+}
+{
+    "instruction": "原子操作实现",
+    "input": "ARM64架构如何实现原子加法？",
+    "output": "使用LSE指令：\n1. LDADD指令实现原子加\n2. 循环CAS实现（旧架构）\n示例：\n__atomic_add_fetch(&var, 1, __ATOMIC_SEQ_CST)\n生成指令：ldaddal w1, w0, [x2]"
+}
+{
+    "instruction": "中断延迟测试",
+    "input": "如何使用示波器测量中断延迟？",
+    "output": "方法：\n1. GPIO引脚初始化为输出\n2. 中断处理函数立即拉高电平\n3. 外部触发信号连接GPIO和示波器\n4. 测量触发信号与电平变化时间差\n软件配合：\nrequest_irq()注册中断处理"
+}
+{
+    "instruction": "NUMA调度策略",
+    "input": "Linux如何优化NUMA节点的任务分配？",
+    "output": "策略：\n1. 默认使用节点本地分配\n2. numactl --preferred指定优先节点\n3. 自动NUMA balancing（sysctl vm.numa_balancing=1）\n4. 进程迁移阈值调整\n监控工具：\nnumastat -p <pid>"
+}
+{
+    "instruction": "实时信号处理",
+    "input": "如何保证实时进程的信号及时响应？",
+    "output": "配置方法：\n1. 使用SA_SIGINFO标志注册信号\n2. 设置sigaction的SA_RESTART\n3. 实时信号（SIGRTMIN+）优先处理\n4. 提高信号处理线程优先级\n5. 使用signalfd()异步处理"
+}
+{
+    "instruction": "核间缓存刷新",
+    "input": "如何保证多核间的数据可见性？",
+    "output": "使用内存屏障指令：\n1. smp_mb()全屏障\n2. smp_wmb()写屏障\n3. smp_rmb()读屏障\n或使用原子操作隐式屏障\nx86架构下mfence/sfence/lfence指令"
+}
+{
+    "instruction": "中断共享处理",
+    "input": "Linux如何处理共享中断线设备？",
+    "output": "注册时指定IRQF_SHARED标志：\nrequest_irq(irq, handler, IRQF_SHARED, name, dev)\n中断处理函数需检查设备状态寄存器\n返回IRQ_NONE表示非本设备中断\n使用dev_id参数区分不同设备"
+}
+{
+    "instruction": "调度器调试",
+    "input": "如何实时监控Linux运行队列状态？",
+    "output": "使用/proc/sched_debug文件：\nwatch -n1 'cat /proc/sched_debug | grep \"cpu#\"'\n或使用perf工具：\nperf sched map\n显示CPU任务执行时间线"
+}
+{
+    "instruction": "功耗性能平衡",
+    "input": "如何配置Intel P-state实现节能？",
+    "output": "方法：\n1. 选择powersave调控器\n2. 设置EPP参数：\necho balance_power > /sys/devices/system/cpu/cpu*/power/energy_performance_preference\n3. 调整min/max频率\n监控：turbostat --show Bzy_MHz"
+}
+{
+    "instruction": "RCU锁机制",
+    "input": "Linux的RCU如何实现高效读取？",
+    "output": "原理：\n1. 读侧无锁访问\n2. 写侧使用发布-订阅机制\n3. 宽限期确保旧数据不再使用\nAPI：\nrcu_read_lock()/rcu_read_unlock()\nsynchronize_rcu()\n适用于读多写少场景"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何定位Linux系统的最大中断延迟？",
+    "output": "方法：\n1. cyclictest -t1 -p99 -m -n -i 1000 -l 10000\n2. ftrace跟踪preemptirqsoff事件\n3. 检查/proc/interrupts的计数异常\n4. 分析nohz_full配置影响\n5. 检查CPU隔离设置"
+}
+{
+    "instruction": "虚拟核映射",
+    "input": "如何查看CPU的逻辑核与物理核对应关系？",
+    "output": "使用lscpu命令：\nlscpu -p\n或查看sysfs：\n/sys/devices/system/cpu/cpuX/topology/physical_package_id\n/sys/devices/system/cpu/cpuX/topology/core_id\n使用lstopo生成拓扑图"
+}
+{
+    "instruction": "进程热迁移",
+    "input": "如何将运行中进程迁移到其他CPU？",
+    "output": "方法：\n1. taskset -pc new_cpu pid\n2. sched_setaffinity系统调用\n3. 依赖内核CONFIG_SMP和调度器支持\n限制：\n实时进程可能无法迁移\n需目标CPU在cpuset允许范围内"
+}
+{
+    "instruction": "中断合并配置",
+    "input": "如何启用网络接口的中断合并功能？",
+    "output": "使用ethtool工具：\nethtool -C eth0 rx-usecs 100 tx-usecs 100\n查看当前配置：\nethtool -c eth0\n参数说明：\nrx/tx-usecs：微秒延迟\nrx/tx-frames：最大帧数"
+}
+{
+    "instruction": "调度策略验证",
+    "input": "如何测试CFS调度器的公平性？",
+    "output": "方法：\n1. 创建多个CPU密集型进程\n2. 使用perf sched timehist分析\n3. 检查/sys/kernel/debug/sched/runqueues\n4. 验证vruntime增长速率\n5. 使用sched_latency_ns调整调度周期"
+}
+{
+    "instruction": "核间中断路由",
+    "input": "如何配置APIC核间中断传递路径？",
+    "output": "通过ACPI MADT表配置：\n1. 查看/proc/interrupts的IPI类型\n2. 使用apic=verbose启动参数\n3. 配置默认目标模式（物理/逻辑）\n4. 使用send_IPI_mask函数发送中断\n涉及x2APIC和Cluster IPI模式"
+}
+{
+    "instruction": "实时时钟校准",
+    "input": "如何验证TSC时钟源的稳定性？",
+    "output": "方法：\n1. 运行稳定性测试：\nstress-ng --tsc 0\n2. 监控/dev/cpu_dma_latency\n3. 检查dmesg的TSC同步消息\n4. 使用clocksource watchdog\n5. 比较CLOCK_MONOTONIC和TSC读数"
+}
+{
+    "instruction": "调度组策略",
+    "input": "cgroups v2如何实现CPU资源分配？",
+    "output": "配置参数：\n1. cpu.weight：按权重分配\n2. cpu.max：最大配额\n3. cpu.pressure：监控压力\n示例：\necho '200000 100000' > cpu.max\n表示每100ms周期分配200ms CPU时间"
+}
+{
+    "instruction": "中断线程优先级",
+    "input": "如何调整Linux中断线程的优先级？",
+    "output": "通过chrt命令：\nchrt -f 50 -p $(pgrep irq/123-)\n或代码设置：\nstruct sched_param param = {.sched_priority = 50};\nsched_setscheduler(thread, SCHED_FIFO, &param);\n需root权限"
+}
+{
+    "instruction": "缓存预取优化",
+    "input": "如何利用硬件预取提升CPU性能？",
+    "output": "方法：\n1. 使用__builtin_prefetch()\n2. 配置MSR寄存器启用硬件预取\n3. 设计顺序内存访问模式\n4. 避免随机访问破坏预取\n检查预取效果：\nperf stat -e L1-dcache-prefetch-misses"
+}
+{
+    "instruction": "核间同步延迟",
+    "input": "如何测量多核间的缓存同步延迟？",
+    "output": "使用lmbench工具：\nlat_mem_rd -P 1 -N 1 -t 64\n或自定义测试：\n1. 核A写内存位置\n2. 核B轮询直到值变化\n3. 用RDTSC测量时间差\n需考虑内存屏障和缓存一致性协议"
+}
+{
+    "instruction": "实时任务抢占",
+    "input": "如何配置Linux内核允许完全抢占？",
+    "output": "编译选项：\nCONFIG_PREEMPT=y\n运行时验证：\nuname -a显示PREEMPT\n影响：\n允许内核态抢占（除自旋锁区域）\n最大降低调度延迟至微秒级"
+}
+{
+    "instruction": "中断延迟日志",
+    "input": "如何记录Linux系统的最大中断延迟？",
+    "output": "配置内核选项：\nCONFIG_IRQSOFF_TRACER=y\n使用trace-cmd：\ntrace-cmd record -p irqsoff -e preemptirqsoff\n查看报告：\ntrace-cmd report | grep max"
+}
+{
+    "instruction": "CPU拓扑感知",
+    "input": "如何让调度器感知NUMA拓扑结构？",
+    "output": "内核自动构建调度域：\n1. 通过ACPI SRAT表获取NUMA信息\n2. 创建sched_domain层级结构\n3. load_balance()考虑节点距离\n查看拓扑：\n/sys/devices/system/node/node*/cpumap"
+}
+{
+    "instruction": "虚拟化调度隔离",
+    "input": "如何防止虚拟机间的CPU资源争抢？",
+    "output": "方案：\n1. CPU pinning绑定物理核\n2. 使用CFS带宽控制（cpu.cfs_quota_us）\n3. 启用Intel CAT缓存分配\n4. 配置实时优先级（KVM vCPU线程）\n5. 监控/proc/vmstat的steal时间"
+}
+{
+    "instruction": "中断负载监控",
+    "input": "如何实时查看各CPU核心的中断分布？",
+    "output": "使用mpstat工具：\nmpstat -P ALL 1\n或查看/proc/interrupts：\nwatch -n1 'cat /proc/interrupts'\n统计各IRQ在各CPU的发生次数"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何在运行时动态切换CFS和实时调度器？",
+    "output": "方法：\n1. chrt -f 1 -p <pid> 切换为SCHED_FIFO\n2. chrt -o -p <pid> 恢复CFS\n3. 内核内部通过sched_setscheduler()实现\n限制：需要CAP_SYS_NICE权限"
+}
+{
+    "instruction": "原子操作ABA问题",
+    "input": "如何解决CAS操作的ABA问题？",
+    "output": "解决方案：\n1. 使用双宽CAS（double-word）\n2. 添加版本号标记\n3. 使用LL/SC指令对\n示例：\nstruct pointer_t { uintptr_t addr; uint32_t version; };\n__atomic_compare_exchange(&ptr, &expected, &new, ...)"
+}
+{
+    "instruction": "核间任务分发",
+    "input": "如何实现工作线程池的负载均衡？",
+    "output": "方法：\n1. 使用多队列设计（每个CPU一个队列）\n2. 工作窃取（work stealing）算法\n3. 基于sched_getcpu()绑定线程\n4. 动态调整基于系统负载\n示例：\nTBB库的task_arena自动负载均衡"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何定位DPC延迟过高的问题？",
+    "output": "工具：\n1. Windows Performance Analyzer（WPA）\n2. 查看DPC/ISR跟踪事件\n3. xperf -on latency -stackwalk profile\n4. 检查高耗时DPC模块\n优化手段：\n减少DPC执行时间、调整IRQL级别"
+}
+{
+    "instruction": "缓存刷新指令",
+    "input": "x86如何强制刷新特定缓存行？",
+    "output": "使用CLFLUSH指令：\nasm volatile("clflush (%0)" : : "r"(addr));\n或CLFLUSHOPT优化版本\n需要内存屏障保证顺序：\nmfence指令在刷新操作后"
+}
+{
+    "instruction": "实时任务唤醒",
+    "input": "如何确保实时进程被立即唤醒？",
+    "output": "措施：\n1. 使用高优先级SCHED_FIFO\n2. 缩短调度粒度（sched_rr_timeslice）\n3. 避免优先级反转（优先级继承）\n4. 配置CPU隔离\n5. 使用sched_setaffinity绑定专用核"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量多核CPU间的通信延迟？",
+    "output": "使用Intel PCM工具：\npcm.x -- latency\n或自定义测试：\n1. 核A发送IPI\n2. 核B响应时记录时间戳\n3. 计算往返延迟/2\n考虑缓存一致性和总线争用影响"
+}
+{
+    "instruction": "中断处理优化",
+    "input": "如何缩短Linux中断服务例程执行时间？",
+    "output": "优化策略：\n1. 仅做关键操作（保存状态）\n2. 复杂处理移入tasklet或workqueue\n3. 禁用无关中断\n4. 使用MSI-X多向量中断\n5. 优化设备DMA操作\n6. 提高中断优先级"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何为Linux添加新的调度类？",
+    "output": "步骤：\n1. 定义sched_class结构体\n2. 实现enqueue/dequeue等操作\n3. 注册到全局调度类链表\n4. 修改pick_next_task选择逻辑\n5. 提供用户态API设置策略\n示例参考：kernel/sched/rt.c"
+}
+{
+    "instruction": "CPU漏洞缓解",
+    "input": "如何禁用Meltdown补丁提升性能？",
+    "output": "内核启动参数：\nmitigations=off\n或选择性禁用：\npti=off spectre_v2=off\n安全警告：\n将暴露硬件漏洞，仅用于性能测试环境"
+}
+{
+    "instruction": "中断嵌套深度",
+    "input": "x86如何处理中断的嵌套层级限制？",
+    "output": "通过中断栈分配：\n1. 每个中断使用独立栈帧\n2. 默认最大嵌套深度受栈大小限制\n3. 内核配置CONFIG_DEBUG_STACKOVERFLOW\n4. 使用printk_stack_address调试溢出\n建议保持中断处理函数简短"
+}
+{
+    "instruction": "核间锁优化",
+    "input": "如何设计NUMA友好的自旋锁？",
+    "output": "技术：\n1. MCS锁（每个核本地自旋）\n2. 基于队列的锁机制\n3. 自适应自旋策略\n4. 区分本地和远程锁获取\n示例：\nqspinlock在Linux内核的实现"
+}
+{
+    "instruction": "实时时钟偏移",
+    "input": "如何校正TSC时钟源的漂移问题？",
+    "output": "方法：\n1. 启用CONFIG_X86_TSC\n2. 使用kvm-clock驱动（虚拟化）\n3. 定期与HPET校准\n4. 设置clocksource=tsc unstable=0\n5. 应用ntp同步用户空间时间"
+}
+{
+    "instruction": "中断频率限制",
+    "input": "如何限制网络接口的中断触发频率？",
+    "output": "使用ethtool限制：\nethtool -C eth0 rx-usecs-high 1000\n或调整NAPI权重：\necho 500 > /sys/class/net/eth0/gro_flush_timeout\n内核参数：\nnet.core.netdev_budget=600"
+}
+{
+    "instruction": "调度器参数调整",
+    "input": "如何修改CFS调度器的调度周期？",
+    "output": "调整sched_latency_ns：\necho 6000000 > /proc/sys/kernel/sched_latency_ns\n或设置sched_min_granularity_ns\n验证：\ncat /proc/sys/kernel/sched_latency_ns\n单位纳秒，默认6ms"
+}
+{
+    "instruction": "硬件断点使用",
+    "input": "如何利用调试寄存器设置数据断点？",
+    "output": "使用ptrace接口：\nPTRACE_SETHWDEBUG\n或内核接口：\nregister_wide_hw_breakpoint()\n示例：\nstruct perf_event_attr attr;\nhw_breakpoint_init(&attr);\nattr.bp_addr = (unsigned long)address;"
+}
+{
+    "instruction": "核间缓存竞争",
+    "input": "如何检测多核间的缓存冲突？",
+    "output": "使用性能计数器：\nperf stat -e LLC-load-misses,LLC-store-misses\n或Intel PCM工具：\npcm.x --nocores --noc sockets\n分析跨核访问模式\n优化：数据分片、缓存对齐"
+}
+{
+    "instruction": "中断延迟跟踪",
+    "input": "如何使用ebpf跟踪中断处理延迟？",
+    "output": "编写eBPF程序：\n1. 挂载tracepoint:irq:irq_handler_entry/exit\n2. 计算时间差并存入直方图\n3. 用户态读取统计\n工具：\n使用libbpf或bcc框架\n示例参考：tools/bpf/bpftrace"
+}
+{
+    "instruction": "调度器优先级",
+    "input": "Windows线程的优先级如何映射到调度队列？",
+    "output": "映射规则：\n1. 实时优先级（16-31）对应最高队列\n2. 动态优先级（1-15）可动态调整\n3. 系统线程优先级高于普通进程\n查看工具：\nProcess Explorer的线程视图\n或WinDbg !thread命令"
+}
+{
+    "instruction": "缓存污染防护",
+    "input": "如何防止无关进程污染CPU缓存？",
+    "output": "技术：\n1. 使用CAT技术划分缓存区域\n2. 绑定关键进程到隔离核\n3. 使用cpuset限制竞争进程\n4. 优先使用独占缓存（CLWB指令）\n工具：\nIntel pqos配置缓存分配"
+}
+{
+    "instruction": "中断风暴防护",
+    "input": "Linux如何防止恶意触发的中断风暴？",
+    "output": "防护机制：\n1. 中断频率限制（IRQ throttling）\n2. 设置/proc/sys/kernel/irq/panic_on_overflow\n3. 启用IRQ时间统计\n4. 硬件级速率限制\n5. 将中断转为线程处理"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "RISC-V如何实现原子内存操作？",
+    "output": "使用A扩展指令：\n1. lr.w（加载保留）\n2. sc.w（条件存储）\n示例：\namoswap.w.aq用于原子交换\n需要实现比较交换（CAS）循环\n依赖硬件支持原子操作"
+}
+{
+    "instruction": "实时任务唤醒",
+    "input": "如何立即唤醒SCHED_FIFO线程？",
+    "output": "方法：\n1. 发送实时信号（SIGRTMIN+）\n2. 使用pthread_cond_signal配合优先级继承\n3. 设置事件对象的有信号状态\n4. 确保唤醒线程优先级高于当前运行线程\n避免优先级反转导致延迟"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于位置的调度策略？",
+    "output": "方案：\n1. 扩展sched_class\n2. 在enqueue时记录任务位置\n3. 在pick_next_task时优先本地任务\n4. 结合NUMA感知的负载均衡\n示例参考：Android位置感知调度"
+}
+{
+    "instruction": "中断延迟测试",
+    "input": "如何用软件模拟高中断负载测试？",
+    "output": "使用stress-ng：\nstress-ng --irq N --irq-ops 1000000\n指定N个中断线程\n配合cyclictest测量延迟变化\n或编写内核模块循环触发软中断"
+}
+{
+    "instruction": "核间通信协议",
+    "input": "ARM64的核间中断如何发送？",
+    "output": "使用SGI（Software Generated Interrupt）：\n1. 写ICC_SGI1R_EL1寄存器\n2. 指定目标CPU列表\n3. 设置中断ID（0-15）\n内核API：\nipi_send_mask()发送跨核中断"
+}
+{
+    "instruction": "缓存预取禁用",
+    "input": "如何关闭CPU的硬件预取功能？",
+    "output": "通过MSR寄存器：\nwrmsr 0x1a4 0xf\n（具体位取决于CPU型号）\n验证：\n使用likwid工具检测预取状态\n注意：可能严重影响性能，仅用于测试"
+}
+{
+    "instruction": "调度器优先级",
+    "input": "Linux普通进程的优先级如何计算？",
+    "output": "动态优先级 = static_prio + bonus\nstatic_prio = 120 + nice值\nbonus基于进程交互性（0-10）\n最终优先级范围：100-139\n查看：\nps -eo pid,pri,ni,comm"
+}
+{
+    "instruction": "中断延迟日志",
+    "input": "如何记录中断处理的完整时间线？",
+    "output": "使用ftrace：\necho 1 > /sys/kernel/debug/tracing/events/irq/enable\necho 1 > /sys/kernel/debug/tracing/events/sched/enable\ncat /sys/kernel/debug/tracing/trace_pipe\n包含中断触发、处理、调度事件"
+}
+{
+    "instruction": "核间负载均衡",
+    "input": "如何手动触发Linux调度器负载均衡？",
+    "output": "向迁移线程发送信号：\necho 1 > /proc/sys/kernel/sched_migration\n或使用schedtool：\nschedtool -a 0xf -e stress -c 4\n强制迁移任务到指定CPU"
+}
+{
+    "instruction": "虚拟化调度策略",
+    "input": "KVM如何配置虚拟CPU的调度策略？",
+    "output": "设置QEMU参数：\n-cpu host,pin=yes\n-task policy,rr -priority 90\n或使用cgroups：\n绑定vCPU线程到物理核\n查看vCPU线程：\nps -eL | grep qemu"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置Linux为低延迟模式？",
+    "output": "内核启动参数：\npreempt=full threadirqs nohz=off\n系统配置：\n1. 设置CPU为performance调控器\n2. 关闭透明大页\n3. 使用实时内核\n4. 绑定关键进程到隔离核\n验证：cyclictest测试"
+}
+{
+    "instruction": "调度延迟测量",
+    "input": "如何精确测量Linux进程的调度延迟？",
+    "output": "使用cyclictest工具：\ncyclictest -t1 -p99 -n -i 1000 -l 10000\n参数说明：\n-t1 单线程\n-p99 设置最高实时优先级\n-i 1000 间隔1ms\n-l 10000 循环10000次\n输出显示最大/最小/平均延迟"
+}
+{
+    "instruction": "核间缓存同步",
+    "input": "MESI协议如何处理多核缓存失效？",
+    "output": "失效流程：\n1. 核A修改缓存行时发送Invalidate消息\n2. 其他核将对应缓存行标记为Invalid\n3. 核B后续访问时触发缓存未命中\n4. 从内存或核A获取最新数据\n状态转换通过总线嗅探机制实现"
+}
+{
+    "instruction": "实时优先级配置",
+    "input": "Windows如何创建最高优先级的实时线程？",
+    "output": "步骤：\n1. 进程基类设为REALTIME_PRIORITY_CLASS\n2. 线程优先级设为THREAD_PRIORITY_TIME_CRITICAL\n3. 调用SetThreadPriorityBoost禁用优先级衰减\n代码示例：\nSetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);\nSetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);"
+}
+{
+    "instruction": "中断栈分配",
+    "input": "Linux如何为中断处理分配内核栈？",
+    "output": "实现方式：\n1. 每个CPU预分配独立的中断栈（通常4KB）\n2. 中断发生时自动切换栈指针\n3. 通过CONFIG_4KSTACKS配置栈大小\n查看当前栈使用：\ncat /proc/<pid>/stack"
+}
+{
+    "instruction": "调度域配置",
+    "input": "Linux调度域层次结构如何划分？",
+    "output": "典型层次：\n1. SMT层（超线程兄弟）\n2. CORE层（物理核心）\n3. MC层（多核封装）\n4. NUMA域（内存节点）\n查看拓扑：\nls /sys/devices/system/cpu/cpu0/domain*/"
+}
+{
+    "instruction": "原子操作实现",
+    "input": "RISC-V架构如何实现原子比较交换？",
+    "output": "使用LR/SC指令对：\n1. lr.w rd, (rs1) 加载保留\n2. sc.w rd, rs2, (rs1) 条件存储\n示例代码：\nasm volatile(\"1: lr.w %0, (%1)\\n\"\n             \"   bne %0, %2, 1f\\n\"\n             \"   sc.w %0, %3, (%1)\\n\"\n             \"   bnez %0, 1b\\n\"\n             \"1:\" : \"=&r\" (ret) : \"r\" (ptr), \"r\" (old), \"r\" (new));"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何减少硬件中断的服务时间？",
+    "output": "优化策略：\n1. 拆分中断处理为top/bottom half\n2. 使用NAPI机制批量处理网络包\n3. 禁用非关键中断\n4. 采用MSI-X多向量中断\n5. 优化DMA缓冲区管理\n6. 提高中断服务例程优先级"
+}
+{
+    "instruction": "CPU隔离配置",
+    "input": "如何将Linux核心专用于实时任务？",
+    "output": "内核参数配置：\nisolcpus=1,2,3\n启动后操作：\n1. 关闭内核线程迁移：echo 0 > /sys/devices/system/cpu/cpu1/online\n2. 设置cpuset.cpus\n3. 禁用该核的IRQ：echo 0 > /proc/irq/default_smp_affinity"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何动态切换Windows线程调度策略？",
+    "output": "使用API：\n1. SetThreadPriority()调整优先级类\n2. AvSetMmThreadCharacteristics()设置多媒体类\n3. SetProcessPriorityBoost()禁用优先级衰减\n实时策略需要管理员权限并修改注册表限制"
+}
+{
+    "instruction": "缓存刷新机制",
+    "input": "x86如何保证缓存一致性？",
+    "output": "硬件机制：\n1. MESI协议维护缓存状态\n2. 内存屏障指令（mfence/sfence/lfence）\n3. CLFLUSH指令强制刷新\n软件辅助：\n1. 使用volatile关键字\n2. 内核内存管理API（flush_cache_range）"
+}
+{
+    "instruction": "中断线程绑定",
+    "input": "如何将Linux中断线程绑定到特定CPU？",
+    "output": "步骤：\n1. 查看中断号：cat /proc/interrupts\n2. 设置smp_affinity：echo 4 > /proc/irq/N/smp_affinity\n3. 确认IRQ线程名称：ps -eL | grep IRQ\n4. 使用taskset绑定线程：taskset -pc 2 <pid>"
+}
+{
+    "instruction": "调度器跟踪",
+    "input": "如何实时观察CFS调度器决策？",
+    "output": "使用trace-cmd工具：\ntrace-cmd record -e sched_switch\n查看报告：\ntrace-cmd report | grep \"prev_comm=\\\|next_comm=\"\n关键字段：\nprev_pid/next_pid, vruntime, weight"
+}
+{
+    "instruction": "核间通信协议",
+    "input": "ARM多核启动如何实现核间同步？",
+    "output": "启动流程：\n1. 主核设置启动地址寄存器\n2. 从核执行WFE进入等待\n3. 主核发送SEV唤醒信号\n4. 从核检查启动地址有效性\n5. 使用原子操作维护启动锁\n代码示例：spin_table实现"
+}
+{
+    "instruction": "优先级反转解决",
+    "input": "Linux如何实现优先级天花板协议？",
+    "output": "配置方法：\n1. 定义pthread_mutexattr_t属性\n2. 设置协议：pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_PROTECT)\n3. 指定最高优先级：pthread_mutexattr_setprioceiling(&attr, 99)\n4. 初始化互斥锁\n需要CONFIG_RT_MUTEXES支持"
+}
+{
+    "instruction": "中断负载均衡",
+    "input": "如何自动平衡多核系统的中断处理？",
+    "output": "使用irqbalance服务：\n1. 安装：apt install irqbalance\n2. 配置/etc/default/irqbalance\n3. 设置BANNAMED_CPUS排除特定核心\n4. 监控/proc/interrupts分布\n高级配置：\nIRQBALANCE_ARGS=\"--policyscript=/path/to/policy\""
+}
+{
+    "instruction": "调度组配置",
+    "input": "cgroups v2如何实现CPU带宽控制？",
+    "output": "配置参数：\n1. cpu.max：格式$MAX $PERIOD\n2. cpu.weight：相对权重\n示例：\necho \"50000 100000\" > cpu.max\n表示每100ms周期分配50ms CPU时间\n监控统计：\ncat cpu.stat查看使用量和节流次数"
+}
+{
+    "instruction": "硬件预取控制",
+    "input": "如何禁用Intel CPU的硬件预取？",
+    "output": "通过MSR寄存器：\nwrmsr -a 0x1a4 0xf\n预取禁用位：\nBit0: L2硬件预取\nBit1: L2相邻缓存行预取\nBit2: DCU预取\nBit3: IP预取\n验证效果：\n使用likwid工具测试带宽变化"
+}
+{
+    "instruction": "实时任务迁移",
+    "input": "如何禁止SCHED_FIFO任务跨核迁移？",
+    "output": "方法：\n1. sched_setaffinity绑定CPU\n2. 设置cpuset.cpus允许的CPU范围\n3. 内核参数isolcpus隔离目标CPU\n4. 关闭内核特性kernel.sched_migration_cost_ns\n验证：\nwatch -n1 'ps -eo pid,psr,comm'"
+}
+{
+    "instruction": "中断延迟统计",
+    "input": "如何获取每个IRQ的中断处理时间？",
+    "output": "使用ftrace功能：\n1. echo 1 > /sys/kernel/debug/tracing/events/irq/enable\n2. cat /sys/kernel/debug/tracing/trace_pipe\n3. 分析irq_handler_entry和irq_handler_exit时间戳\n过滤特定IRQ：\necho 'irq == 123' > /sys/kernel/debug/tracing/events/irq/filter"
+}
+{
+    "instruction": "缓存对齐检测",
+    "input": "如何验证数据结构是否缓存对齐？",
+    "output": "调试方法：\n1. 打印地址：printf(\"%p\\n\", ptr)\n2. 检查地址是否为64字节倍数\n3. 使用__builtin_assume_aligned\n4. 通过perf检测缓存未命中率\nGDB命令：\np/x ((uintptr_t)ptr & 0x3f)"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "Linux如何实现跨CPU的屏障操作？",
+    "output": "使用smp_mb系列宏：\n1. smp_mb(): 全屏障\n2. smp_wmb(): 写屏障\n3. smp_rmb(): 读屏障\n底层实现：\nARM使用dmb指令\nx86通过lock指令前缀隐含屏障"
+}
+{
+    "instruction": "调度策略验证",
+    "input": "如何测试SCHED_DEADLINE策略的有效性？",
+    "output": "测试步骤：\n1. 使用schedtool设置策略：\nschedtool -E -t 10000000:10000000 -e ./task\n2. 生成负载：stress-ng --cpu 4\n3. 监控deadline统计：\ncat /proc/sys/kernel/sched_dl_runtime_us\n4. 使用latencytop检测超限"
+}
+{
+    "instruction": "中断嵌套跟踪",
+    "input": "如何记录x86中断嵌套的深度？",
+    "output": "调试方法：\n1. 在内核中维护per-CPU计数器\n2. 在do_IRQ入口递增，出口递减\n3. 通过/proc/interrupts显示嵌套深度\n或使用ftrace：\necho stacktrace > /sys/kernel/debug/tracing/events/irq/trigger"
+}
+{
+    "instruction": "CPU热插拔",
+    "input": "Linux如何动态禁用CPU核心？",
+    "output": "操作步骤：\n1. echo 0 > /sys/devices/system/cpu/cpu2/online\n2. 确认状态：lscpu\n3. 重新启用：echo 1 > online\n限制：\n不能禁用所有核，部分架构需BIOS支持"
+}
+{
+    "instruction": "实时时钟源切换",
+    "input": "如何强制Linux使用HPET时钟源？",
+    "output": "内核启动参数：\nclocksource=hpet\n运行时切换：\necho hpet > /sys/devices/system/clocksource/clocksource0/current_clocksource\n验证：\ncat /sys/devices/system/clocksource/clocksource0/current_clocksource"
+}
+{
+    "instruction": "调度器参数调整",
+    "input": "如何修改CFS调度器的时间片粒度？",
+    "output": "调整参数：\n1. sched_min_granularity_ns：最小时间片\n2. sched_latency_ns：调度周期\n示例：\necho 3000000 > /proc/sys/kernel/sched_min_granularity_ns\n单位纳秒，默认3ms"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置Linux为实时任务优化中断？",
+    "output": "优化方案：\n1. 使用threadirqs内核参数\n2. 设置IRQ线程优先级：chrt -f 90 -p <irq_pid>\n3. 绑定IRQ到独立CPU\n4. 禁用irqbalance服务\n5. 采用低延迟内核配置"
+}
+{
+    "instruction": "缓存污染测试",
+    "input": "如何检测进程的缓存污染行为？",
+    "output": "使用perf工具：\nperf stat -e LLC-load-misses,LLC-store-misses -p <pid>\n分析指标：\n高缓存未命中率可能指示污染\n优化策略：\n使用CAT技术隔离缓存区域"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量多核间原子操作延迟？",
+    "output": "测试方法：\n1. 核A循环原子递增变量\n2. 核B循环读取变量\n3. 用RDTSC测量平均延迟\n代码示例：\nasm volatile(\"lock; addl $1, %0\" : \"+m\" (var));\n考虑缓存一致性协议影响"
+}
+{
+    "instruction": "调度器扩展开发",
+    "input": "如何调试自定义Linux调度类？",
+    "output": "调试方法：\n1. 添加printk日志到pick_next_task\n2. 使用ftrace跟踪调度事件\n3. 分析/proc/sched_debug输出\n4. 创建测试用例覆盖所有状态\n5. 使用内核内存检测工具（KASAN）"
+}
+{
+    "instruction": "中断延迟监控",
+    "input": "如何实现中断处理的实时监控？",
+    "output": "方案：\n1. 使用PREEMPT_RT实时内核\n2. 配置cyclictest作为监控进程\n3. 通过trace-cmd记录中断事件\n4. 设置报警阈值（/sys/kernel/debug/tracing/tracing_max_latency）\n5. 集成Prometheus+Grafana展示"
+}
+{
+    "instruction": "CPU微码更新",
+    "input": "如何安全更新Intel CPU微码？",
+    "output": "步骤：\n1. 下载intel-ucode包\n2. 生成早期微码镜像：\ncat /boot/intel-ucode.img >> /boot/initramfs\n3. 更新grub配置\n4. 重启后验证：\ndmesg | grep microcode\n注意：需要对应CPU型号支持"
+}
+{
+    "instruction": "核间锁竞争优化",
+    "input": "如何减少自旋锁的缓存行竞争？",
+    "output": "优化技术：\n1. 分片锁设计（per-CPU锁）\n2. 填充缓存行到64字节\n3. 使用读/写锁替代\n4. 实现MCS锁减少总线争用\n示例：\nstruct {\n    spinlock_t lock;\n    char padding[64 - sizeof(spinlock_t)];\n} ____cacheline_aligned;"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何跟踪SCHED_FIFO线程的状态变化？",
+    "output": "使用trace-cmd工具：\ntrace-cmd record -e sched_switch -f 'prio < 100'\ntrace-cmd report\n关键字段：\nprev_state（TASK_RUNNING等）、next_prio\n结合ps -eo pid,pri,cls,cmd监控"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何诊断Windows系统的DPC延迟？",
+    "output": "工具链：\n1. Windows Performance Recorder\n2. Windows Performance Analyzer\n3. 查看DPC/ISR跟踪事件\n4. 分析Interrupt CPU Usage图表\n优化手段：\n更新驱动、调整IRQL优先级"
+}
+{
+    "instruction": "调度策略影响",
+    "input": "SCHED_BATCH策略适用于什么场景？",
+    "output": "适用场景：\n1. 非交互式批处理任务\n2. CPU密集型后台作业\n3. 允许更长的时间片\n4. 优先权低于普通进程\n配置方法：\nchrt -b 0 ./program\n或sched_setscheduler()设置"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MOESI协议相比MESI有哪些改进？",
+    "output": "主要改进：\n1. 增加Owned状态\n2. 允许修改数据在缓存间共享\n3. 减少内存访问次数\n状态转换：\nModified -> Owned -> Shared\n降低总线带宽消耗，提升多核效率"
+}
+{
+    "instruction": "中断共享处理",
+    "input": "如何安全卸载共享中断线的驱动？",
+    "output": "卸载步骤：\n1. 同步所有中断处理完成\n2. 调用free_irq()释放中断\n3. 检查/proc/interrupts确认卸载\n4. 处理可能的pending中断\n注意：必须传递注册时的dev_id参数"
+}
+{
+    "instruction": "调度器参数调整",
+    "input": "如何限制CFS调度器的最大带宽？",
+    "output": "使用cgroups v2控制：\necho '10000 100000' > cpu.max\n表示每100ms周期最多使用10ms\n监控统计：\ncat cpu.stat | grep throttled\n调整权重：\necho 50 > cpu.weight"
+}
+
+{
+    "instruction": "调度延迟分析",
+    "input": "如何检测进程因CPU竞争导致的调度延迟？",
+    "output": "方法：\n1. 使用perf sched latency分析上下文切换时间\n2. 查看/proc/<pid>/schedstat的run_delay字段\n3. 跟踪sched_switch事件：trace-cmd record -e sched_switch\n4. 检查CPU使用率与就绪队列长度"
+}
+{
+    "instruction": "核间缓存争用",
+    "input": "如何诊断多核共享LLC导致的性能下降？",
+    "output": "步骤：\n1. 使用perf stat -e LLC-load-misses测量未命中率\n2. 通过Intel RDT技术监控缓存分配\n3. 采用CAT技术划分缓存区域\n4. 分析代码访问模式优化数据局部性"
+}
+{
+    "instruction": "实时中断处理",
+    "input": "如何配置Linux实现微秒级中断响应？",
+    "output": "配置方案：\n1. 使用PREEMPT_RT实时内核补丁\n2. 设置IRQ线程优先级为SCHED_FIFO\n3. 绑定中断到独立CPU核心\n4. 禁用电源管理调控器\n5. 启用CONFIG_HIGH_RES_TIMERS"
+}
+{
+    "instruction": "原子操作代价",
+    "input": "x86原子操作与普通操作性能差异有多大？",
+    "output": "典型差异：\n1. LOCK前缀指令吞吐量下降5-10倍\n2. CAS操作消耗约20-100周期\n测试方法：\n使用基准测试工具测量__atomic_add_fetch与普通加法耗时\n优化建议：减少临界区原子操作密度"
+}
+{
+    "instruction": "调度域隔离",
+    "input": "如何为NUMA节点配置独立调度域？",
+    "output": "内核参数设置：\nnuma_balancing=disable\n手动配置：\n1. 通过/sys/devices/system/node/nodeX/cpulist绑定CPU\n2. 设置cpuset.mems和cpuset.cpus\n3. 关闭跨节点负载均衡"
+}
+{
+    "instruction": "中断延迟跟踪",
+    "input": "如何捕获硬件中断到实际处理的延迟？",
+    "output": "使用ftrace：\n1. echo 1 > events/irq/irq_handler_entry/enable\n2. echo 1 > events/irq/irq_handler_exit/enable\n3. 计算exit_time - entry_time\n高级工具：\neBPF程序挂钩irq_handler_entry/exit事件"
+}
+{
+    "instruction": "优先级衰减机制",
+    "input": "Windows如何防止实时线程饿死其他任务？",
+    "output": "机制包括：\n1. 优先级衰减（Priority Decay）\n2. 时间配额限制（Quantum End）\n3. 前台进程优先级提升\n禁用衰减：\nSetProcessPriorityBoost(process, TRUE)"
+}
+{
+    "instruction": "缓存预取策略",
+    "input": "如何针对顺序访问优化CPU预取？",
+    "output": "配置方法：\n1. 使用__builtin_prefetch提前预取\n2. 设置硬件预取器（MSR 0x1a4）\n3. 设计内存访问步长为缓存行倍数\n4. 通过madvise(MADV_SEQUENTIAL)提示内核"
+}
+{
+    "instruction": "核间中断路由",
+    "input": "ARM多核如何实现核间中断(IPI)？",
+    "output": "使用GIC中断控制器：\n1. 写GICD_SGIR寄存器发送SGI\n2. 指定目标CPU列表和中断ID\n代码示例：\nwritel(0x0000ff01 | (irq << 24), gicd_base + GICD_SGIR)"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何将运行中进程从CFS迁移到实时策略？",
+    "output": "动态修改：\nchrt -f -p 99 <pid>\n代码实现：\nstruct sched_param param = {.sched_priority = 99};\nsched_setscheduler(pid, SCHED_FIFO, &param);\n需要CAP_SYS_NICE权限"
+}
+{
+    "instruction": "中断线程优先级",
+    "input": "如何提升Linux下半部处理的优先级？",
+    "output": "配置方法：\n1. 对tasklet使用HI_SOFTIRQ类型\n2. 为workqueue设置WQ_HIGHPRI标志\n3. 调整softirqd线程优先级：\nchrt -f -p 50 $(pgrep ksoftirqd)"
+}
+{
+    "instruction": "缓存伪共享检测",
+    "input": "如何定位多线程中的缓存行竞争问题？",
+    "output": "诊断工具：\n1. perf c2c检测跨核缓存访问\n2. valgrind --tool=cachegrind分析\n3. 检查共享变量地址是否跨缓存行\n优化方法：结构体填充或独立缓存对齐"
+}
+{
+    "instruction": "实时任务唤醒",
+    "input": "如何确保SCHED_DEADLINE任务准时唤醒？",
+    "output": "配置要点：\n1. 合理设置runtime/deadline/period参数\n2. 禁用CPU频率调节（performance模式）\n3. 隔离专用CPU核心\n4. 监控sched_dl_runtime_us剩余时间"
+}
+{
+    "instruction": "中断负载监控",
+    "input": "如何实时显示各CPU中断处理占比？",
+    "output": "使用mpstat工具：\nmpstat -P ALL 1\n关键指标：\n%irq列显示中断处理时间占比\n配合watch命令：\nwatch -n1 \"cat /proc/interrupts\""
+}
+{
+    "instruction": "调度组优先级",
+    "input": "cgroups v2如何实现层级CPU分配？",
+    "output": "配置方法：\n1. 创建嵌套cgroup目录结构\n2. 父组设置cpu.weight影响子组分配\n3. 叶子组设置cpu.max限制配额\n示例：\n父组weight=100，子组A weight=300，子组B weight=700"
+}
+{
+    "instruction": "原子操作内存序",
+    "input": "C++11内存模型如何影响多核同步？",
+    "output": "内存序选项：\n1. memory_order_relaxed：无顺序保证\n2. memory_order_acquire：加载屏障\n3. memory_order_release：存储屏障\n4. memory_order_seq_cst：全屏障\n影响代码生成和缓存可见性"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量跨NUMA节点的访问延迟？",
+    "output": "使用Intel PCM工具：\npcm.x --latency\n或自定义测试：\n1. 分配跨节点内存\n2. 测量LMBench lat_mem_rd结果\n3. 比较本地与远程访问时间差"
+}
+{
+    "instruction": "中断风暴防御",
+    "input": "Linux如何限制单个IRQ的最大触发频率？",
+    "output": "设置IRQ限流：\necho 1000 > /proc/irq/<IRQ>/ratelimit\n内核参数：\n/proc/sys/kernel/irq_ratelimit_threshold\n注意：可能影响设备正常工作"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于能源感知的CPU调度？",
+    "output": "方法：\n1. 集成EAS（Energy Aware Scheduling）\n2. 使用CPU capacity值评估算力\n3. 调度时考虑能效比\n4. 配合intel_pstate驱动\n查看/sys/devices/system/cpu/cpu*/cpu_capacity"
+}
+{
+    "instruction": "缓存分区分配",
+    "input": "如何为关键进程保留LLC缓存空间？",
+    "output": "使用Intel CAT：\n1. 创建CLOS（Class of Service）\n2. 分配缓存位掩码：pqos -e 'llc:1=0x00ff;'\n3. 绑定进程到CLOS：pqos -a 'cos:1=1234'"
+}
+{
+    "instruction": "实时时钟漂移",
+    "input": "如何校正长时间运行的TSC累积误差？",
+    "output": "校准方法：\n1. 定期与HPET/ACPI PMT时钟源同步\n2. 使用NTP adjtimex调整\n3. 启用CONFIG_X86_TSC_RELIABLE\n检查状态：\ndmesg | grep 'TSC synchronization'"
+}
+{
+    "instruction": "中断延迟日志",
+    "input": "如何持久化记录最大中断延迟？",
+    "output": "配置方法：\n1. 修改printk_ratelimit设置\n2. 使用trace_marker记录时间戳\n3. 编写内核模块统计延迟\n4. 集成syslog-ng持久化日志\n示例：echo 0 > /proc/sys/kernel/printk_ratelimit"
+}
+{
+    "instruction": "调度策略优先级",
+    "input": "Linux各调度策略的优先级顺序是什么？",
+    "output": "优先级排序：\n1. SCHED_DEADLINE（最高）\n2. SCHED_FIFO\n3. SCHED_RR\n4. SCHED_BATCH\n5. SCHED_IDLE（最低）\n查看：chrt -m"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "RISC-V如何实现多核原子操作？",
+    "output": "使用A扩展指令：\n1. lr.w（加载保留）\n2. sc.w（条件存储）\n示例代码：\nasm volatile(\"1: lr.w %0, (%1)\\n\"\n             \"   sc.w %0, %2, (%1)\\n\"\n             \"   bnez %0, 1b\" : \"=&r\" (ret) : \"r\" (ptr), \"r\" (new));"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置DPDK实现零拷贝中断处理？",
+    "output": "优化步骤：\n1. 使用轮询模式驱动（PMD）\n2. 绑定NIC队列到独立CPU\n3. 启用巨页减少TLB缺失\n4. 配置RX/TX批处理\n5. 禁用内核协议栈接管"
+}
+{
+    "instruction": "CPU拓扑发现",
+    "input": "如何编程获取系统的CPU拓扑信息？",
+    "output": "Linux方法：\n1. 解析/sys/devices/system/cpu/*/topology\n2. 使用libnuma库函数\n3. 通过sysconf(_SC_NPROCESSORS_CONF)\nWindows API：\nGetLogicalProcessorInformationEx"
+}
+{
+    "instruction": "调度器参数调优",
+    "input": "如何调整CFS的负载计算衰减因子？",
+    "output": "内核参数：\n/sys/kernel/debug/sched/decay_period\n默认值32ms，公式：\nload = load * y + runnable * (1 - y)\ny = (decay_period - delta)/decay_period"
+}
+{
+    "instruction": "中断线程命名",
+    "input": "如何自定义Linux中断线程的名称？",
+    "output": "注册中断时指定设备名称：\nrequest_threaded_irq(irq, handler, thread_fn, 0, \"my_irq\", dev);\n查看线程名：\nps -eL | grep my_irq\n注意：名称长度限制为15字符"
+}
+{
+    "instruction": "缓存行优化",
+    "input": "如何设计避免伪共享的并发计数器？",
+    "output": "实现方案：\n1. 使用__attribute__((aligned(64))对齐\n2. 每个线程独立计数器\n3. 定期汇总到全局变量\n示例：\nstruct Counter { long value; char padding[64 - sizeof(long)]; } per_cpu[NR_CPUS];"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何跟踪SCHED_RR进程的时间片消耗？",
+    "output": "方法：\n1. 查看/proc/<pid>/sched的time_slice字段\n2. 使用trace-cmd跟踪sched_process_exec事件\n3. 通过sched_rr_timeslice_ns内核参数调整默认时间片"
+}
+{
+    "instruction": "核间通信带宽",
+    "input": "如何测量多核间内存复制带宽？",
+    "output": "工具：\n1. mbw测试工具\n2. 自定义测试：\n#pragma omp parallel for\nfor (i=0; i<SIZE; i++) dst[i] = src[i];\n使用RDTSC测量时间"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何检测ACPI电源管理导致的中断延迟？",
+    "output": "诊断步骤：\n1. 检查/proc/interrupts的PME中断计数\n2. 禁用C-states：intel_idle.max_cstate=0\n3. 监控CPU唤醒延迟：turbostat --show C1% -i 1\n4. 使用powertop分析电源事件"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于机器学习预测的CPU调度？",
+    "output": "研究方案：\n1. 收集调度特征（运行时间、缓存使用等）\n2. 训练预测模型估计任务行为\n3. 实现自定义调度类决策\n4. 集成到内核sched_class框架\n挑战：实时性和模型准确性平衡"
+}
+{
+    "instruction": "缓存预取禁用",
+    "input": "如何在特定代码段临时禁用硬件预取？",
+    "output": "x86方法：\n1. 使用_mm_clflushopt刷新缓存行\n2. 设置MSR 0x1a4禁用预取\n代码示例：\nasm volatile(\"cli; wrmsr; sti\" : : \"c\"(0x1a4), \"d\"(0), \"a\"(0xf))"
+}
+{
+    "instruction": "实时任务绑定",
+    "input": "如何确保实时进程固定运行在指定CPU？",
+    "output": "步骤：\n1. sched_setaffinity设置CPU亲和性\n2. 内核参数isolcpus隔离目标CPU\n3. 关闭IRQ平衡：systemctl stop irqbalance\n4. 设置实时优先级：chrt -f 99"
+}
+{
+    "instruction": "中断延迟统计",
+    "input": "如何生成中断延迟的热点图分析？",
+    "output": "使用trace-cmd和kernelshark：\n1. trace-cmd record -e irq_handler_entry -e irq_handler_exit\n2. kernelshark生成时间线视图\n3. 导出CSV数据用Python/Matplotlib绘制热图"
+}
+{
+    "instruction": "调度策略迁移",
+    "input": "如何将Windows线程迁移到其他CPU？",
+    "output": "API方法：\n1. SetThreadAffinityMask()设置亲和性\n2. GetNumaProcessorNode()获取NUMA节点\n3. SetThreadPreferredUILanguages()影响调度\n注意：实际调度仍由内核决定"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "AMD Zen架构使用哪种缓存一致性协议？",
+    "output": "Zen架构协议：\n1. MOESI+协议（Modified, Owned, Exclusive, Shared, Invalid）\n2. 每个CCX包含8核共享L3\n3. 通过Infinity Fabric互连\n4. 支持non-inclusive LLC缓存"
+}
+{
+    "instruction": "中断线程化配置",
+    "input": "如何将特定硬件中断转为内核线程？",
+    "output": "步骤：\n1. request_threaded_irq注册中断\n2. 指定handler为NULL，thread_fn为处理函数\n3. 设置IRQF_ONESHOT标志\n4. 调整生成线程的优先级"
+}
+{
+    "instruction": "调度器历史统计",
+    "input": "如何查看进程的调度历史记录？",
+    "output": "使用Linux的sched_debug功能：\ncat /proc/sched_debug > debug.log\n包含：\n运行时间、切换次数、vruntime等\n或使用LTTng记录调度事件"
+}
+{
+    "instruction": "核间锁竞争",
+    "input": "如何诊断RCU锁导致的CPU停滞？",
+    "output": "诊断工具：\n1. CONFIG_RCU_TRACE内核配置\n2. 查看/proc/rcu/rcu*/gp*\n3. 使用ftrace跟踪rcu_*事件\n优化：调整RCU回调批处理大小"
+}
+{
+    "instruction": "中断延迟阈值",
+    "input": "如何设置Linux中断延迟的报警机制？",
+    "output": "实现方案：\n1. 编写内核模块跟踪最大延迟\n2. 通过netlink发送超限通知\n3. 用户空间接收并触发报警\n或使用rt-tools的cyclicdeadline检测"
+}
+{
+    "instruction": "调度组优先级",
+    "input": "cgroups v2如何实现两级CPU分配？",
+    "output": "分层配置：\n1. 父组设置cpu.weight=100\n2. 子组A设置cpu.weight=200\n3. 子组B设置cpu.weight=300\n实际分配比例：200/(200+300)=40% vs 60%"
+}
+{
+    "instruction": "原子操作ABA",
+    "input": "如何用C++11解决CAS的ABA问题？",
+    "output": "解决方案：\n1. 使用双字宽原子类型（128位）\n2. 附带版本号标记\n示例：\nstd::atomic<std::pair<uint64_t, uint64_t>>\ncompare_exchange_strong比较完整数据"
+}
+{
+    "instruction": "中断负载分配",
+    "input": "如何为多队列网卡配置IRQ亲和性？",
+    "output": "步骤：\n1. 检查队列数：ethtool -l eth0\n2. 设置每个队列的smp_affinity：\necho 8 > /proc/irq/123/smp_affinity\n3. 启用RPS/RFS：\necho f > /sys/class/net/eth0/queues/rx-0/rps_cpus"
+}
+{
+    "instruction": "调度延迟优化",
+    "input": "如何减少内核态到用户态的切换开销？",
+    "output": "优化方法：\n1. 使用vDSO加速时钟调用\n2. 增加syscall批处理\n3. 采用io_uring异步I/O\n4. 减少上下文切换频率\n5. 使用用户态轮询（如DPDK）"
+}
+{
+    "instruction": "缓存行对齐",
+    "input": "如何保证动态分配内存的缓存对齐？",
+    "output": "C11方法：\nvoid *aligned_alloc(64, size);\nLinux扩展：\nposix_memalign(&ptr, 64, size);\nC++17：\nstruct alignas(64) Data {...};\nnew Data();"
+}
+{
+    "instruction": "核间同步延迟",
+    "input": "如何测量自旋锁在不同核间的获取时间？",
+    "output": "测试方法：\n1. 核A循环获取释放锁\n2. 核B测量等待时间差\n3. 使用RDTSC或clock_gettime(CLOCK_MONOTONIC_RAW)\n注意处理内存屏障和乱序执行"
+}
+{
+    "instruction": "中断线程优先级",
+    "input": "如何为Windows DPC设置执行优先级？",
+    "output": "API方法：\n1. KeSetImportanceDpc()设置优先级\n2. KeSetTargetProcessorDpc()绑定CPU\n3. 使用CLOCK_LEVEL或PROFILE_LEVEL\n注意：DPC在DISPATCH_LEVEL执行"
+}
+{
+    "instruction": "调度器跟踪",
+    "input": "如何记录进程的完整调度时间线？",
+    "output": "使用LTTng工具：\n1. lttng create --live\n2. lttng enable-event -k sched_*\n3. lttng start\n4. 使用babeltrace分析结果\n或使用perf sched timehist"
+}
+{
+    "instruction": "缓存污染防御",
+    "input": "如何防止DMA操作污染CPU缓存？",
+    "output": "处理方法：\n1. 使用dma_alloc_coherent分配一致性内存\n2. 在DMA操作前后调用dma_sync_single_for_*\n3. 启用IOMMU隔离设备访问\n4. 禁用缓存（WC或UC内存类型）"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何检测SCHED_DEADLINE任务超时？",
+    "output": "监控方法：\n1. 跟踪/sys/kernel/debug/sched/deadline\n2. 使用perf sched检查dl_runtime_exceeded\n3. 设置cgroup的cpu.max超限通知\n4. 内核配置CONFIG_SCHED_DEBUG=y"
+}
+{
+    "instruction": "核间通信带宽",
+    "input": "如何优化跨NUMA节点的内存访问？",
+    "output": "优化策略：\n1. 使用numactl --preferred绑定内存\n2. 启用内核自动NUMA平衡\n3. 采用分片数据副本\n4. 使用HugeTLB减少页表开销\n5. 设计NUMA感知的数据结构"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何检测APIC定时器中断的抖动？",
+    "output": "测试方法：\n1. 配置高精度定时器（hrtimer）\n2. 记录连续触发时间差\n3. 使用statistics工具计算标准差\n4. 比较不同时钟源（TSC vs HPET）"
+}
+{
+    "instruction": "调度策略影响",
+    "input": "SCHED_IDLE策略适用于什么场景？",
+    "output": "适用场景：\n1. 后台低优先级任务\n2. CPU空闲时才会调度\n3. 不影响其他进程的nice值\n设置方法：\nchrt -i 0 ./program\n或sched_setscheduler()"
+}
+{
+    "instruction": "缓存行共享",
+    "input": "如何检测多线程共享同一缓存行？",
+    "output": "工具方法：\n1. perf c2c detect\n2. 检查变量地址：&var % 64\n3. 使用GDB打印内存布局\n4. Intel VTune的Memory Access分析\n优化：重新排列结构体字段"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "ARM如何实现独占加载/存储操作？",
+    "output": "使用LDXR/STXR指令：\n1. LDXR加载内存并标记独占\n2. STXR仅在标记有效时存储\n示例：\nretry:\nldxr x0, [x1]\nadd x0, x0, 1\nstxr w2, x0, [x1]\ncbnz w2, retry"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置Linux实现低延迟音频处理？",
+    "output": "配置方案：\n1. 使用PREEMPT_RT内核\n2. 设置音频IRQ线程为SCHED_FIFO\n3. 绑定IRQ到独立CPU\n4. 禁用CPU频率调节\n5. 启用CONFIG_HZ_1000\n6. 使用ALSA的dmix插件"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何为容器实现自定义CPU分配策略？",
+    "output": "实现路径：\n1. 扩展cgroups v2控制器\n2. 实现新的sched_class调度类\n3. 集成到容器运行时（如runc）\n4. 通过OCI annotations传递策略参数\n参考：Facebook的CPUSET策略"
+}
+{
+    "instruction": "缓存行刷新",
+    "input": "如何强制刷新特定地址的CPU缓存？",
+    "output": "x86指令：\nasm volatile(\"clflush %0\" : : \"m\"(*addr));\nLinux内核API：\nvoid clflush_cache_range(void *addr, int size);\n注意：需要内存屏障保证顺序"
+}
+{
+    "instruction": "中断线程统计",
+    "input": "如何获取每个中断线程的运行时间？",
+    "output": "方法：\n1. 查看/proc/<irq_thread_pid>/schedstat\n2. 使用ps -o cputime -p <pid>\n3. 跟踪sched_switch事件时间差\n4. 内核配置CONFIG_SCHEDSTATS=y"
+}
+{
+    "instruction": "调度延迟调优",
+    "input": "如何减少CFS调度器的选择开销？",
+    "output": "优化措施：\n1. 减小调度域范围\n2. 启用CONFIG_SCHED_AUTOGROUP\n3. 调整sched_min_granularity_ns\n4. 使用EAS调度器\n5. 限制运行队列长度"
+}
+{
+    "instruction": "核间通信机制",
+    "input": "Linux如何实现跨CPU的信号量传递？",
+    "output": "使用完成变量（completion）：\n1. DECLARE_COMPLETION(c)\n2. wait_for_completion()阻塞\n3. complete()触发唤醒\n底层基于调度器实现跨核上下文切换"
+}
+{
+    "instruction": "中断延迟测试",
+    "input": "如何模拟高频中断测试系统稳定性？",
+    "output": "方法：\n1. 使用软中断：\ntaskset -c 0 stress-ng --irq 4 --irq-ops 1000000\n2. 硬件模拟：连接信号发生器\n3. 内核模块循环触发中断\n监控工具：\nperf stat -e irq_vectors:local_timer_entry"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何将Windows进程转为实时优先级？",
+    "output": "步骤：\n1. Process Explorer右键设置优先级\n2. 调用SetPriorityClass(REALTIME_PRIORITY_CLASS)\n3. 修改注册表HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl\n注意：需管理员权限"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MESI协议中的Snooping如何工作？",
+    "output": "监听机制：\n1. 所有缓存通过总线监听请求\n2. 写操作发送Invalidate广播\n3. 其他缓存标记副本为Invalid\n4. 读未命中触发总线RdMiss事务\n优点：保持一致性但增加总线负载"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何检测ACPI中断路由导致的延迟？",
+    "output": "诊断步骤：\n1. 检查/proc/interrupts的SCI计数\n2. 使用acpidump分析ACPI表\n3. 禁用APIC模式使用PIC\n4. 监控irqbalance日志\n内核参数：acpi=noirq"
+}
+{
+    "instruction": "调度器历史记录",
+    "input": "如何查看进程的完整调度迁移历史？",
+    "output": "使用LTTng记录事件：\n1. lttng create --live\n2. lttng enable-event -k sched_switch\n3. lttng start\n4. 使用babeltrace或TraceCompass分析\n显示CPU迁移、状态变更时间线"
+}
+{
+    "instruction": "缓存行优化",
+    "input": "如何设计无锁队列避免缓存竞争？",
+    "output": "设计方案：\n1. 每个生产者独立写入缓存行\n2. 使用CAS实现无锁同步\n3. 填充结构体到完整缓存行\n示例：\nstruct Node { void* data; char padding[64 - sizeof(void*)]; }"
+}
+{
+    "instruction": "核间同步延迟",
+    "input": "如何测量跨插槽CPU的原子操作延迟？",
+    "output": "测试方法：\n1. 绑定线程到不同NUMA节点\n2. 循环执行原子递增\n3. 使用RDTSC测量平均耗时\n对比同插槽与跨插槽延迟差异\n工具：Intel MLC或自定义基准测试"
+}
+{
+    "instruction": "中断线程化调试",
+    "input": "如何跟踪中断线程的调度延迟？",
+    "output": "方法：\n1. chrt -p <irq_thread_pid>查看优先级\n2. trace-cmd记录sched_switch事件\n3. 分析线程状态转换时间\n4. 检查/proc/<pid>/schedstat的run_delay"
+}
+{
+    "instruction": "调度组监控",
+    "input": "如何实时查看cgroups的CPU使用情况？",
+    "output": "命令：\n1. systemd-cgtop\n2. cat /sys/fs/cgroup/cpu.stat\n3. 利用BPF工具：\nbpftrace -e 'tracepoint:sched:sched_process_exec { @[args->cgroup] = count(); }'"
+}
+{
+    "instruction": "缓存预取控制",
+    "input": "如何动态启用/禁用硬件预取？",
+    "output": "x86方法：\n1. 读取MSR 0x1a4\n2. 修改预取控制位\n3. 写入MSR 0x1a4\n代码示例：\nwrmsr(0x1a4, (msr & ~0x0F) | 0x01);\n需要内核模块或特权指令"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何检测SCHED_RR进程的时间片耗尽？",
+    "output": "监控方法：\n1. 查看/proc/<pid>/sched的time_slice\n2. 跟踪sched_process_wait事件\n3. 使用strace跟踪sched_yield调用\n4. 内核配置CONFIG_SCHED_DEBUG=y"
+}
+{
+    "instruction": "核间通信协议",
+    "input": "PowerPC如何实现核间原子操作？",
+    "output": "使用lwarx/stwcx指令对：\n1. lwarx加载并保留地址\n2. stwcx条件存储\n示例：\nretry:\nlwarx r0, 0, r3\naddi r0, r0, 1\nstwcx. r0, 0, r3\nbne retry"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何降低虚拟化环境的中断延迟？",
+    "output": "优化措施：\n1. 启用PCIe passthrough直通设备\n2. 使用SR-IOV虚拟功能\n3. 绑定vCPU到物理核\n4. 配置virtio-net的中断合并\n5. 禁用虚拟机exit事件采样"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何将Windows线程切换为实时优先级？",
+    "output": "API调用：\nSetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);\n限制：\n需进程基类为REALTIME_PRIORITY_CLASS\n注册表可能限制最高优先级"
+}
+{
+    "instruction": "缓存行填充",
+    "input": "如何验证结构体是否跨缓存行？",
+    "output": "调试方法：\n1. 打印结构体大小：sizeof(struct)\n2. 检查成员变量偏移地址\n3. 使用GDB的ptype /o查看布局\n4. 通过perf c2c检测伪共享"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "Linux的seq锁如何实现多核同步？",
+    "output": "实现原理：\n1. 写者递增序列号并获取锁\n2. 读者检查序列号奇偶性\n3. 写者完成更新后再次递增\n适用场景：读多写少，如系统时间更新"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何检测硬件缓存未命中导致的中断延迟？",
+    "output": "方法：\n1. 使用perf记录中断处理函数\n2. 分析L1/L2/LLC未命中事件\n3. 优化关键路径内存访问\n工具命令：\nperf record -e cycles,L1-dcache-load-misses -g"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于容器权重的CPU分配？",
+    "output": "cgroups v2配置：\n1. 设置cpu.weight比例\n2. 启用cpu.pressure监控\n3. 结合cpu.max限制峰值\n示例：\n容器A weight=200，容器B weight=300\n实际分配比2:3"
+}
+{
+    "instruction": "缓存行优化",
+    "input": "如何设计高效的多生产者单消费者队列？",
+    "output": "设计方案：\n1. 每个生产者独立写入缓存行\n2. 消费者批量读取\n3. 使用无锁环形缓冲区\n4. 填充结构体避免伪共享\n示例参考：DPDK rte_ring实现"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量QPI总线的通信延迟？",
+    "output": "使用Intel MLC工具：\nmlc --loaded_latency\n测试不同NUMA节点间延迟\n或自定义测试：\n跨节点原子操作测量RTT/2"
+}
+{
+    "instruction": "中断线程化处理",
+    "input": "如何为已注册中断启用线程化处理？",
+    "output": "动态转换方法：\n1. echo threaded > /proc/irq/<IRQ>/mode\n2. 确认线程创建：ps -eL | grep IRQ\n3. 调整线程优先级：chrt -f 90 -p <pid>\n需要CONFIG_IRQ_FORCED_THREADING"
+}
+{
+    "instruction": "调度延迟统计",
+    "input": "如何生成进程调度延迟的分布直方图？",
+    "output": "使用eBPF工具：\n1. 编写BPF程序挂钩sched_switch\n2. 计算prev_comm到next_comm的延迟\n3. 存储到BPF_HISTOGRAM\n4. 用户空间生成直方图\n参考工具：offcputime"
+}
+{
+    "instruction": "缓存预取策略",
+    "input": "如何针对随机访问优化预取？",
+    "output": "策略：\n1. 使用间接预取（预取指针目标）\n2. 调整硬件预取器步长\n3. 软件预取提前多步\n4. 基于机器学习预测访问模式\n示例：__builtin_prefetch(ptr + offset)"
+}
+{
+    "instruction": "核间同步调试",
+    "input": "如何检测自旋锁的长时间持有问题？",
+    "output": "调试方法：\n1. CONFIG_DEBUG_SPINLOCK\n2. 跟踪lock/unlock事件时间差\n3. 使用lockstat工具\n4. 分析/proc/lock_stat\n5. 设置watchdog检测超时"
+}
+{
+    "instruction": "中断延迟日志",
+    "input": "如何记录中断处理的完整调用栈？",
+    "output": "配置方法：\n1. echo 1 > /proc/sys/kernel/ftrace_dump_on_oops\n2. echo stacktrace > /sys/kernel/debug/tracing/events/irq/trigger\n3. 触发中断后查看dmesg\n或使用crash工具分析vmcore"
+}
+
+{
+    "instruction": "调度域优化",
+    "input": "Linux如何根据CPU拓扑调整调度域层级？",
+    "output": "配置方法：\n1. 通过CONFIG_SCHED_MC/SMT控制层级\n2. 查看/sys/devices/system/cpu/cpu0/domain*/\n3. 使用sched_domain_topology_level定制\n示例：\nstatic cpumask_var_t *sd_numa_masks = node_to_cpumask_var_ptr(node_states[N_CPU]);"
+}
+{
+    "instruction": "中断延迟追踪",
+    "input": "如何使用eBPF实时监控中断处理延迟？",
+    "output": "编写BPF程序：\n1. 挂钩irq_handler_entry/exit事件\n2. 计算时间差存入直方图\n3. 用户态读取统计\n示例：\nBPF_HISTOGRAM(hist, u64);\nu64 ts = bpf_ktime_get_ns();\nhist.increment(bpf_log2l(exit_ts - entry_ts));"
+}
+{
+    "instruction": "核间锁优化",
+    "input": "如何设计NUMA友好的读写自旋锁？",
+    "output": "优化方案：\n1. 区分本地和远程读锁请求\n2. 使用per-cpu计数器减少跨节点通信\n3. 实现qrwlock替代传统读写锁\n4. 结合mcs_spinlock减少总线争用"
+}
+{
+    "instruction": "实时任务监控",
+    "input": "如何检测SCHED_DEADLINE任务的期限违约？",
+    "output": "方法：\n1. 跟踪/sys/kernel/debug/sched/deadline\n2. 使用tracepoint:sched:sched_dl_runtime_exceeded\n3. 设置cgroup事件通知：\necho 1 > cpu.ddl_notify"
+}
+{
+    "instruction": "缓存分区管理",
+    "input": "如何动态调整Intel CAT缓存分配？",
+    "output": "使用pqos工具：\n1. 分配CLOS：pqos -e 'llc:1=0x0f00;'\n2. 绑定进程：pqos -a 'cos:1=1234'\n3. 监控使用：pqos -s\n支持运行时更新：\npqos -R resctrl.ctrl"
+}
+{
+    "instruction": "中断线程绑定",
+    "input": "如何将特定IRQ线程永久绑定到CPU核心？",
+    "output": "持久化方案：\n1. 创建/etc/rc.local脚本\n2. 写入：echo mask > /proc/irq/N/smp_affinity\n3. 设置IRQ线程优先级：\nchrt -f -p 90 $(cat /proc/irq/N/smp_affinity_pid)"
+}
+{
+    "instruction": "调度策略验证",
+    "input": "如何测试SCHED_BATCH策略的实际效果？",
+    "output": "测试步骤：\n1. chrt -b 0 ./cpu_intensive_task\n2. 使用perf stat统计上下文切换次数\n3. 对比与SCHED_OTHER的吞吐量差异\n4. 监控/proc/<pid>/sched的nr_switches字段"
+}
+{
+    "instruction": "原子操作屏障",
+    "input": "ARM64如何实现内存屏障指令？",
+    "output": "指令集：\n1. dmb ish：全屏障\n2. dsb ish：数据同步屏障\n3. ldar/stlr：自带屏障的加载/存储\n示例：\nasm volatile(\"dmb ish\" ::: \"memory\");"
+}
+{
+    "instruction": "核间同步延迟",
+    "input": "如何测量跨NUMA节点的原子操作开销？",
+    "output": "测试方法：\n1. 绑定线程到不同节点：numactl --cpunodebind\n2. 循环执行atomic_add()\n3. 使用RDTSC测量平均周期数\n工具：\nperf stat -e cpu/event=0x3c,umask=0x0/"
+}
+{
+    "instruction": "中断风暴防护",
+    "input": "Linux如何实现硬件级中断速率限制？",
+    "output": "配置方法：\n1. 设置/proc/irq/N/ratelimit\n2. 使用IRQF_NO_THREAD抑制高频中断\n3. 启用中断合并：ethtool -C eth0 rx-usecs 100\n4. 配置APIC定时器最大中断频率"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于能耗感知的任务迁移？",
+    "output": "集成EAS框架：\n1. 定义能效模型（energy_model）\n2. 计算任务迁移的能效成本\n3. 优化find_busiest_queue算法\n4. 使用/sys/kernel/debug/sched/energy显示数据"
+}
+{
+    "instruction": "缓存行竞争检测",
+    "input": "如何定位多核环境下的缓存乒乓问题？",
+    "output": "诊断工具：\n1. perf c2c detect\n2. Intel VTune的Memory Access分析\n3. 检查LLC未命中率：perf stat -e LLC-loads,LLC-load-misses\n优化：数据分片或读写分离"
+}
+{
+    "instruction": "实时时钟精度",
+    "input": "如何验证TSC时钟源的稳定性？",
+    "output": "测试方法：\n1. 运行稳定性测试：stress-ng --tsc 4\n2. 比较CLOCK_MONOTONIC与TSC差值\n3. 检查dmesg的TSC同步状态\n4. 使用chronyc tracking查看漂移率"
+}
+{
+    "instruction": "核间通信协议",
+    "input": "PowerPC如何实现原子内存操作？",
+    "output": "使用lwarx/stwcx指令对：\nretry:\nlwarx r3, 0, r4\naddi r3, r3, 1\nstwcx. r3, 0, r4\nbne retry"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置DPDK实现零中断处理？",
+    "output": "方案：\n1. 使用轮询模式驱动（PMD）\n2. 设置rxq_intr_disable=1\n3. 绑定逻辑核到隔离CPU\n4. 启用busy-polling：\nsysctl -w net.core.busy_poll=50"
+}
+{
+    "instruction": "调度策略切换",
+    "input": "如何将Windows线程动态迁移到高效核？",
+    "output": "API方法：\n1. SetThreadSelectedCpuSets()\n2. 查询CPU架构：GetSystemCpuSetInformation()\n3. 结合Power服务注册表调整\n限制：需Windows 11 22H2+支持"
+}
+{
+    "instruction": "缓存预取控制",
+    "input": "如何动态调整硬件预取策略？",
+    "output": "通过MSR寄存器：\n1. 读取0x1A4：rdmsr 0x1a4\n2. 修改位域（L2预取/相邻预取）\n3. 写入新值：wrmsr 0x1a4\n示例禁用L2预取：\nval |= (1 << 0); wrmsr(0x1a4, val)"
+}
+{
+    "instruction": "实时任务分析",
+    "input": "如何跟踪SCHED_RR进程的时间片消耗？",
+    "output": "方法：\n1. 查看/proc/<pid>/sched的time_slice\n2. 使用trace-cmd记录sched_slice事件\n3. 编写BPF程序统计时间片耗尽次数\n4. 设置sched_rr_timeslice_ns调整默认值"
+}
+{
+    "instruction": "核间同步调试",
+    "input": "如何检测RCU宽限期停滞？",
+    "output": "诊断工具：\n1. CONFIG_RCU_TRACE内核配置\n2. 查看/proc/rcu/rcu*/gp*\n3. 使用rcu stall检测：\necho 10 > /sys/module/rcupdate/parameters/rcu_cpu_stall_timeout"
+}
+{
+    "instruction": "中断线程化监控",
+    "input": "如何统计中断线程的调度延迟？",
+    "output": "方法：\n1. 使用trace-cmd记录sched_switch\n2. 过滤irq_thread函数调用\n3. 计算ready->running时间差\n4. 生成延迟分布直方图：\nperf script | awk '/irq_thread/{print $5}' | histogram.py"
+}
+{
+    "instruction": "调度组隔离",
+    "input": "如何实现cgroups v2的CPU核心独占？",
+    "output": "配置步骤：\n1. cpuset.cpus指定独占核心\n2. cpu.max设置max 100000\n3. 关闭负载均衡：echo 0 > cpuset.sched_load_balance\n4. 绑定进程：echo $PID > cgroup.procs"
+}
+{
+    "instruction": "原子操作验证",
+    "input": "如何测试CAS操作的ABA问题？",
+    "output": "测试方案：\n1. 线程A读取值X\n2. 线程B修改X→Y→X\n3. 线程A执行CAS(X→Z)\n4. 检查是否错误成功\n解决方法：使用双字CAS或版本号"
+}
+{
+    "instruction": "中断路由分析",
+    "input": "如何跟踪ACPI中断路由配置？",
+    "output": "诊断方法：\n1. acpidump > acpi_table.dat\n2. 使用iasl反编译\n3. 查找APIC/MADT表\n4. 启用内核参数apic=verbose\n5. 监控/proc/interrupts的IRQ分布"
+}
+{
+    "instruction": "调度器参数调优",
+    "input": "如何调整CFS调度器的负载计算衰减？",
+    "output": "内核参数：\n/sys/kernel/debug/sched/decay_period\n公式：load = load*y + runnable*(1-y)\n动态调整：\necho 64000000 > decay_period # 64ms"
+}
+{
+    "instruction": "缓存行填充",
+    "input": "如何确保动态数组的缓存对齐？",
+    "output": "C11方法：\nint *arr = aligned_alloc(64, size*sizeof(int));\nLinux扩展：\nposix_memalign((void**)&arr, 64, size*sizeof(int));\n验证：\nif ((uintptr_t)arr % 64 != 0) abort();"
+}
+{
+    "instruction": "核间通信带宽",
+    "input": "如何优化跨NUMA节点的内存拷贝？",
+    "output": "优化策略：\n1. 使用numactl --preferred绑定\n2. 启用内核自动NUMA平衡\n3. 采用分片拷贝+多线程\n4. 使用NT存储指令（非临时）\n5. 预取目标地址缓存行"
+}
+{
+    "instruction": "中断延迟调优",
+    "input": "如何降低虚拟化嵌套中断的延迟？",
+    "output": "方案：\n1. 启用VMFUNC EPTP切换\n2. 配置posted interrupt delivery\n3. 使用AVIC加速虚拟中断\n4. 绑定vCPU到物理核\n5. 禁用不必要的Exit原因"
+}
+{
+    "instruction": "调度策略迁移",
+    "input": "如何将进程从SCHED_FIFO降级为普通策略？",
+    "output": "执行命令：\nchrt -o -p 0 <PID>\n代码实现：\nstruct sched_param param = {0};\nsched_setscheduler(pid, SCHED_OTHER, &param);\n需要CAP_SYS_NICE权限"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "AMD Zen3架构的缓存层次如何组织？",
+    "output": "结构特点：\n1. 每个CCD包含8核心32MB L3\n2. L1D 32KB/L1I 32KB per core\n3. L2 512KB per core\n4. 使用Infinity Fabric互连\n一致性协议：MOESI+ with 64B缓存行"
+}
+{
+    "instruction": "中断线程优先级",
+    "input": "如何为Windows DPC设置执行核亲和性？",
+    "output": "API方法：\n1. KeSetTargetProcessorDpc()\n2. KeSetImportanceDpc()\n示例：\nKeInitializeDpc(&dpc, routine, context);\nKeSetTargetProcessorDpc(&dpc, 2);"
+}
+{
+    "instruction": "调度器跟踪",
+    "input": "如何记录进程的完整上下文切换链？",
+    "output": "使用LTTng：\n1. lttng create --live\n2. lttng enable-event -k sched_switch\n3. lttng start\n4. 使用babeltrace生成调用图\n分析工具：\nTrace Compass或KernelShark"
+}
+{
+    "instruction": "缓存污染防护",
+    "input": "如何防止DMA写操作污染CPU缓存？",
+    "output": "处理方法：\n1. 使用dma_alloc_coherent分配一致性内存\n2. 在DMA操作前调用dma_sync_single_for_device()\n3. 设置WC（Write-Combining）内存类型\n4. 启用IOMMU隔离设备访问"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "RISC-V如何实现多核启动同步？",
+    "output": "启动流程：\n1. 主核执行初始化代码\n2. 从核在循环中等待mip.MSIP置位\n3. 主核写从核的MSIP寄存器触发启动\n4. 使用原子指令同步启动锁\n代码参考：opensbi平台实现"
+}
+{
+    "instruction": "中断延迟分析",
+    "input": "如何检测APIC定时器中断的抖动？",
+    "output": "测试方法：\n1. 配置hrtimer高精度定时器\n2. 记录连续触发时间差\n3. 使用statistics计算标准差\n4. 比较TSC与APIC时钟源差异\n工具：\ncyclictest -t1 -m -p99"
+}
+{
+    "instruction": "调度组策略",
+    "input": "如何实现层级式cgroups CPU资源共享？",
+    "output": "配置示例：\n父组cpu.weight=100\n子组A cpu.weight=200\n子组B cpu.weight=300\n实际分配权重：200/(200+300)=40% vs 60%\n监控：\ncat cpu.stat"
+}
+{
+    "instruction": "缓存行竞争优化",
+    "input": "如何设计无伪共享的并发哈希表？",
+    "output": "设计方案：\n1. 每个桶独立缓存行\n2. 使用分离链接法解决冲突\n3. 填充bucket结构到64字节\n示例：\nstruct bucket {\n    spinlock_t lock;\n    struct list_head list;\n    char padding[64 - sizeof(spinlock_t) - sizeof(struct list_head)];\n};"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量QPI总线的有效带宽？",
+    "output": "使用Intel MLC工具：\nmlc --bandwidth_matrix\n测试跨NUMA节点的读/写带宽\n或自定义测试：\n#pragma omp parallel for\nfor (i=0; i<SIZE; i++) remote[i] = local[i];"
+}
+{
+    "instruction": "中断线程化调试",
+    "input": "如何跟踪中断线程的优先级反转？",
+    "output": "方法：\n1. 使用trace-cmd记录sched_switch\n2. 过滤irq_thread状态变化\n3. 检查是否有高优先级任务抢占\n4. 结合优先级继承互斥体（PTHREAD_PRIO_INHERIT）"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于容器QoS的CPU分配？",
+    "output": "方案：\n1. 扩展cgroups v2控制器\n2. 定义QoS等级映射到cpu.weight\n3. 集成到容器运行时（如Kubernetes）\n4. 通过Annotations传递QoS策略\n示例：Guaranteed/Burstable类"
+}
+{
+    "instruction": "缓存预取策略",
+    "input": "如何针对链表遍历优化硬件预取？",
+    "output": "优化方法：\n1. 使用__builtin_prefetch(node->next)\n2. 确保节点内存连续分配\n3. 调整硬件预取器步长（STRIDE模式）\n4. 设计节点结构为缓存行对齐"
+}
+{
+    "instruction": "核间同步调试",
+    "input": "如何检测自旋锁的优先级反转？",
+    "output": "诊断方法：\n1. CONFIG_DEBUG_PI_LIST\n2. 跟踪锁持有者的优先级变化\n3. 使用lockdep检查死锁链\n4. 启用CONFIG_DEBUG_SPINLOCK\n优化：使用优先级继承互斥体"
+}
+{
+    "instruction": "中断延迟日志",
+    "input": "如何持久化存储中断延迟超限事件？",
+    "output": "实现方案：\n1. 编写内核模块注册notifier_block\n2. 在中断处理中检测超限并记录\n3. 通过netlink发送到用户态\n4. 存储到SQLite或时间序列数据库\n5. 集成Prometheus监控"
+}
+{
+    "instruction": "调度延迟跟踪",
+    "input": "如何实时监测CFS调度器的选择延迟？",
+    "output": "方法：\n1. 使用trace-cmd记录sched_pick_next事件\n2. 计算enqueue_task与pick_next_task时间差\n3. 启用CONFIG_SCHEDSTATS查看pick_next延迟统计\n4. 编写BPF程序挂钩finish_task_switch"
+}
+{
+    "instruction": "中断栈优化",
+    "input": "如何配置Linux内核使用独立中断栈？",
+    "output": "内核参数：\nCONFIG_IRQ_STACKS=y\n配置步骤：\n1. 修改arch/x86/Kconfig启用选项\n2. 设置IRQ_STACK_SIZE=16384\n3. 验证/proc/<pid>/stack显示irq_stack_union"
+}
+{
+    "instruction": "原子操作代价",
+    "input": "ARM64 LSE指令如何优化原子操作？",
+    "output": "优化特性：\n1. 单指令实现原子加减（LDADD）\n2. CAS指令替代LL/SC循环\n3. 支持8/16/32/64位操作\n性能提升：\n比传统LL/SC快3-5倍，减少缓存抖动"
+}
+{
+    "instruction": "NUMA调度优化",
+    "input": "如何验证进程内存的NUMA局部性？",
+    "output": "工具链：\n1. numastat -p <pid> 显示跨节点访问\n2. perf stat -e numa_migrations\n3. /proc/<pid>/numa_maps查看内存分布\n4. migratepages工具手动迁移页面"
+}
+{
+    "instruction": "中断延迟溯源",
+    "input": "如何定位嵌套中断导致的延迟累积？",
+    "output": "诊断方法：\n1. ftrace设置irq:irq_handler_entry/exit层级标记\n2. 捕获最长调用链的exit-entry时间差\n3. 检查/proc/interrupts的嵌套计数\n优化：合并中断处理或转为线程化"
+}
+{
+    "instruction": "缓存分区监控",
+    "input": "如何实时查看Intel CAT缓存分配状态？",
+    "output": "使用pqos工具：\n1. pqos -s 显示所有CLOS缓存掩码\n2. pqos -t 1 -i 5 周期刷新监控\n3. pqos -I -p all:cos=1 按进程查看\n支持事件：LLC misses,MBL occupancy"
+}
+{
+    "instruction": "实时优先级继承",
+    "input": "Linux如何配置PI互斥锁防止优先级反转？",
+    "output": "配置步骤：\n1. 定义pthread_mutexattr_t属性\n2. pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT)\n3. 初始化互斥锁\n验证：\nstrace -e trace=futex查看FUTEX_LOCK_PI操作"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量跨CCX的原子操作延迟？",
+    "output": "测试方案：\n1. taskset绑定线程到不同CCX核心\n2. 循环执行atomic_fetch_add\n3. 使用RDTSCP测量平均周期\n工具：\nperf stat -e cpu/event=0xD0,umask=0x81/"
+}
+{
+    "instruction": "中断合并配置",
+    "input": "如何优化NVMe驱动中断合并参数？",
+    "output": "调整方法：\n1. ethtool -C eth0 rx-usecs 128\n2. 修改/sys/module/nvme/parameters/poll_queues\n3. 设置MSI-X向量数等于队列数\n验证：\ncat /proc/interrupts统计中断频率"
+}
+{
+    "instruction": "调度策略迁移",
+    "input": "如何将Windows进程迁移至能效核？",
+    "output": "PowerShell命令：\nSet-ProcessPowerOptimization -Name chrome -Efficiency\nAPI方法：\nPowerSetActiveOverlayScheme(GUID_SYSTEM_POWER_SAVER)"
+}
+{
+    "instruction": "缓存行填充验证",
+    "input": "如何检测结构体伪共享的缓存行跨越？",
+    "output": "GDB方法：\n1. ptype /o struct_name 查看偏移\n2. 计算字段地址差：$1 = &obj.field2 - &obj.field1\n3. 检查是否超过64字节边界\n优化：插入char __pad[64 - sizeof(type)]"
+}
+{
+    "instruction": "中断线程优先级",
+    "input": "如何为Linux网卡中断线程设置实时优先级？",
+    "output": "步骤：\n1. 查看IRQ号：grep eth0 /proc/interrupts\n2. 获取线程PID：ps -eLo pid,comm | grep irq/<IRQ>\n3. 设置优先级：chrt -f -p 90 <PID>"
+}
+{
+    "instruction": "调度组带宽控制",
+    "input": "如何实现cgroups v2的突发CPU带宽？",
+    "output": "配置参数：\n1. cpu.max格式：$MAX $PERIOD\n2. 设置突发值：echo 200000 100000 > cpu.max\n允许在100ms周期内使用200ms CPU时间（包含100ms突发）"
+}
+{
+    "instruction": "原子操作ABA防护",
+    "input": "如何用双字CAS避免指针复用问题？",
+    "output": "实现方案：\nstruct pointer_t {\n    void *ptr;\n    uintptr_t counter;\n};\n__atomic_compare_exchange(&addr, &expected, &desired, 1, __ATOMIC_ACQ_REL);"
+}
+{
+    "instruction": "中断延迟注入",
+    "input": "如何模拟高中断负载测试实时性？",
+    "output": "方法：\n1. 编写内核模块循环触发软中断\n2. 使用stress-ng：stress-ng --irq 8 --irq-ops 1000000\n3. 硬件注入：连接信号发生器输出方波"
+}
+{
+    "instruction": "调度器拓扑感知",
+    "input": "如何让CFS感知CPU的SMT层级？",
+    "output": "内核配置：\nCONFIG_SCHED_SMT=y\n效果：\n1. 调度域划分超线程兄弟\n2. 负载均衡优先跨物理核迁移\n3. 通过/sys/devices/system/cpu/smt/active控制状态"
+}
+{
+    "instruction": "缓存预取抑制",
+    "input": "如何临时禁用特定地址的硬件预取？",
+    "output": "x86方法：\nasm volatile(\"prefetchnta (%0)\" : : \"r\"(addr));\nARM方法：\nprfm pldl1keep, [x0]\n注意：需结合内存屏障保证顺序"
+}
+{
+    "instruction": "核间同步原语",
+    "input": "RISC-V如何实现多核启动屏障？",
+    "output": "启动协议：\n1. 主核设置boot_flag地址\n2. 从核执行WFI等待\n3. 主核通过CLINT发送MSIP中断\n4. 从核检查boot_flag原子标志\n代码参考：OpenSBI的_hart_start"
+}
+{
+    "instruction": "中断路由验证",
+    "input": "如何检查PCI设备的中断路由配置？",
+    "output": "诊断工具：\n1. lspci -vvv 查看INTx#信号\n2. /proc/interrupts确认MSI-X分配\n3. dmesg | grep -i irq\n4. 设置pci=routeirq内核参数"
+}
+{
+    "instruction": "调度延迟调优",
+    "input": "如何减少SCHED_RR任务的时间片切换开销？",
+    "output": "优化方法：\n1. 增大sched_rr_timeslice_ns\n2. 合并定时器tick（CONFIG_NO_HZ_FULL）\n3. 使用sched_yield主动让出\n4. 绑定任务到独立CPU减少争抢"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MESI协议中Snoop Filter的作用是什么？",
+    "output": "核心功能：\n1. 记录缓存行在哪些核心有副本\n2. 减少总线嗅探流量\n3. 提高Invalidate效率\n实现方式：\n使用目录协议或Bloom Filter压缩状态"
+}
+{
+    "instruction": "中断线程化调试",
+    "input": "如何跟踪中断线程的调度延迟？",
+    "output": "方法：\n1. trace-cmd记录sched_switch事件\n2. 过滤线程名包含'irq'\n3. 计算wakeup->running时间差\n4. 生成火焰图：perf script | flamegraph.pl"
+}
+{
+    "instruction": "调度域可视化",
+    "input": "如何生成Linux调度域的拓扑图？",
+    "output": "工具链：\n1. 安装schedutils包\n2. 执行schedtop -v > topology.dot\n3. 使用graphviz渲染：dot -Tpng topology.dot -o topology.png\n显示SMT/CORE/NUMA层级关系"
+}
+{
+    "instruction": "原子操作验证",
+    "input": "如何测试128位CAS操作的原子性？",
+    "output": "测试方案：\n1. 创建竞争线程同时修改高/低位\n2. 使用校验和验证结果一致性\n3. 注入内存屏障模拟乱序执行\n4. 在ARM/x86/PPC多架构验证"
+}
+{
+    "instruction": "中断延迟监控",
+    "input": "如何实现中断延迟的实时报警？",
+    "output": "方案：\n1. 编写eBPF程序计算irq_entry/exit时延\n2. 超过阈值时发送perf事件\n3. 用户态接收事件触发通知\n4. 集成Prometheus+Alertmanager报警链"
+}
+{
+    "instruction": "缓存行优化",
+    "input": "如何设计无伪共享的环形缓冲区？",
+    "output": "结构设计：\nstruct ring {\n    _Atomic head __attribute__((aligned(64)));\n    _Atomic tail __attribute__((aligned(64)));\n    void* buffers[N] __attribute__((aligned(64)));\n};"
+}
+{
+    "instruction": "核间通信协议",
+    "input": "AMD Infinity Fabric如何影响多核同步？",
+    "output": "特性影响：\n1. 统一内存访问时延差异增大\n2. 跨CCD操作需通过IO die\n3. 同步原语需考虑NUMA层次\n优化：数据本地化+缓存对齐"
+}
+{
+    "instruction": "中断优先级配置",
+    "input": "如何设置ARM GIC中断控制器优先级？",
+    "output": "配置方法：\n1. 设备树设置interrupts属性优先级字段\n2. 运行时写GICD_IPRIORITYRn寄存器\n3. 数值范围0-255（0为最高）\n验证：devmem2查看寄存器值"
+}
+{
+    "instruction": "调度策略验证",
+    "input": "如何测试SCHED_DEADLINE的全局EDF特性？",
+    "output": "测试方案：\n1. 创建多个dl任务设置不同period/runtime\n2. 使用lattency测量截止时间遵守情况\n3. 注入CPU压力观察任务迁移\n4. 监控/sys/kernel/debug/sched/deadline"
+}
+{
+    "instruction": "缓存预取调优",
+    "input": "如何针对矩阵乘法优化硬件预取？",
+    "output": "优化策略：\n1. 调整循环步长为缓存行倍数\n2. 使用__builtin_prefetch提前2次迭代\n3. 确保内存布局连续（行优先）\n4. 设置madvise(MADV_SEQUENTIAL)"
+}
+{
+    "instruction": "核间同步延迟",
+    "input": "如何测量跨L3缓存域的原子操作开销？",
+    "output": "测试方法：\n1. numactl --cpubind=node0 --membind=node1绑定\n2. 循环执行atomic_add测试吞吐量\n3. 使用perf stat统计周期数\n对比同节点与跨节点性能差异"
+}
+{
+    "instruction": "中断线程绑定",
+    "input": "如何持久化网卡中断的CPU亲和性？",
+    "output": "持久化方案：\n1. 创建/etc/udev/rules.d/99-irq.rules\n2. 添加ACTION==\"add\", SUBSystem=="net", RUN+="/bin/echo MASK > /proc/irq/N/smp_affinity"\n3. 使用irqbalance --oneshot初始化"
+}
+{
+    "instruction": "调度器扩展",
+    "input": "如何实现基于容器镜像的调度偏好？",
+    "output": "方案：\n1. 扩展cgroups添加image标签\n2. 调度器读取标签选择偏好CPU\n3. 集成到Kubernetes调度插件\n示例：数据库容器优先调度至大缓存CPU"
+}
+{
+    "instruction": "缓存污染测试",
+    "input": "如何模拟多线程缓存竞争场景？",
+    "output": "测试程序：\n#pragma omp parallel for\nfor (i=0; i<THREADS; i++) {\n    for (j=0; j<SIZE; j += STRIDE)\n        arr[j]++;\n}\n调整STRIDE引发不同级别缓存竞争"
+}
+{
+    "instruction": "中断延迟优化",
+    "input": "如何配置XDP程序实现零中断处理？",
+    "output": "步骤：\n1. 加载XDP DRV模式程序\n2. 设置rxq_intr_disable=1\n3. 启用NAPI poll机制\n4. 绑定处理核到独立CPU\n验证：/proc/interrupts统计中断计数"
+}
+{
+    "instruction": "调度策略迁移",
+    "input": "如何将实时进程迁移回普通调度类？",
+    "output": "方法：\nchrt -o -p 0 <PID>\n代码实现：\nsched_setscheduler(pid, SCHED_NORMAL, &param);\n注意：需CAP_SYS_NICE权限"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MOESI协议中的O状态有何特殊作用？",
+    "output": "O(Owned)状态特性：\n1. 缓存行可被多个核心共享\n2. 持有者负责最终写回内存\n3. 减少总线写回流量\n转换场景：\nModified -> Owned当响应其他核心读请求"
+}
+{
+    "instruction": "中断栈回溯",
+    "input": "如何获取中断上下文的全调用栈？",
+    "output": "诊断方法：\n1. echo 1 > /proc/sys/kernel/panic_on_io_nmi\n2. 触发NMI watchdog：echo c > /proc/sysrq-trigger\n3. crash工具分析vmcore\n4. bt -f命令显示中断栈"
+}
+{
+    "instruction": "调度组监控",
+    "input": "如何实时显示cgroups的CPU使用占比？",
+    "output": "工具：\n1. systemd-cgtop\n2. cgrp-top（第三方工具）\n3. 编写BPF程序统计cpuacct.usage\n示例：bpftrace -e 'tracepoint:sched:sched_process_exit { @[cgroup] = sum(args->runtime); }'"
+}
+{
+    "instruction": "原子操作屏障",
+    "input": "ARM64如何实现发布-消费内存序？",
+    "output": "指令组合：\n1. stlr发布存储（Release）\n2. ldar消费加载（Acquire）\n示例：\nSTLR W0, [X1]\nLDAR W2, [X3]\n自动包含DMB内存屏障"
+}
+{
+    "instruction": "核间通信延迟",
+    "input": "如何测量QPI总线的有效带宽？",
+    "output": "使用Intel MLC：\nmlc --bandwidth_matrix\n测试模式：\n1. 所有对等读\n2. 跨NUMA写\n3. 混合负载\n结果包含带宽和延迟百分位数"
+}
+{
+    "instruction": "中断线程化配置",
+    "input": "如何为USB主机控制器中断启用线程化？",
+    "output": "步骤：\n1. 确认驱动支持IRQF_ONESHOT\n2. echo threaded > /proc/irq/<IRQ>/mode\n3. 设置affinity到专用核心\n4. chrt调整实时优先级\n验证：ps -eL | grep usb"
+}
+{
+    "instruction": "调度策略分析",
+    "input": "如何检测SCHED_BATCH策略的效果？",
+    "output": "分析方法：\n1. perf sched记录上下文切换次数\n2. 对比与SCHED_OTHER的吞吐量\n3. 监控/proc/<pid>/sched的nr_voluntary_switches\n4. 使用schedstat工具分析"
+}
+{
+    "instruction": "缓存行共享检测",
+    "input": "如何用Valgrind定位伪共享问题？",
+    "output": "命令：\nvalgrind --tool=cachegrind --branch-sim=yes ./program\n分析输出：\nD1mr/D1mw统计L1未命中\nCG_ANNOTATE生成源码级报告"
+}
+{
+    "instruction": "核间同步优化",
+    "input": "如何实现低延迟的跨NUMA锁机制？",
+    "output": "方案：\n1. 基于票据的分布式锁\n2. 使用RDMA原子操作\n3. 结合CLFLUSHOPT刷新远程缓存\n4. 采用层次化锁设计（节点级+核心级）"
+}
+{
+    "instruction": "调度延迟分析",
+    "input": "如何检测CFS调度器的选择延迟？",
+    "output": "方法：\n1. 使用trace-cmd记录sched_pick_next事件\n2. 查看/sys/kernel/debug/sched/latency_ns统计\n3. 编写BPF程序挂钩pick_next_task_fair\n4. 结合perf sched timehist分析时间线"
+}
+{
+    "instruction": "中断栈管理",
+    "input": "x86如何处理中断栈溢出？",
+    "output": "防护机制：\n1. 内核配置CONFIG_DEBUG_STACKOVERFLOW\n2. 使用guard page检测溢出\n3. 异常时触发panic打印栈回溯\n4. 调整THREAD_SIZE定义栈大小"
+}
+{
+    "instruction": "原子操作优化",
+    "input": "ARM64 CAS指令如何减少缓存抖动？",
+    "output": "优化特性：\n1. 单指令完成比较交换\n2. 避免LL/SC循环导致的缓存行独占\n3. 支持弱/强内存序选项\n性能提升：减少20-40%锁竞争开销"
+}
+{
+    "instruction": "NUMA负载均衡",
+    "input": "如何验证自动NUMA平衡的效果？",
+    "output": "诊断方法：\n1. numastat -m查看跨节点分配\n2. perf stat -e numa_pte_updates\n3. /proc/vm/numa_stat显示迁移统计\n4. 使用numademo进行基准测试"
+}
+{
+    "instruction": "中断嵌套跟踪",
+    "input": "如何记录中断处理的最大嵌套深度？",
+    "output": "实现方案：\n1. 内核模块维护per-CPU计数器\n2. do_IRQ入口递增/出口递减\n3. 通过debugfs导出/proc/irq_nesting_depth\n4. 触发警告当超过阈值"
+}
+{
+    "instruction": "缓存分区监控",
+    "input": "如何实时查看Intel CAT缓存占用？",
+    "output": "使用pqos工具：\n1. pqos -I -p all显示所有进程缓存使用\n2. pqos -T 1周期刷新监控\n3. pqos -e 'llc:1=0x0f'设置监控组\n4. 结合RDT技术统计LLC未命中"
+}
+{
+    "instruction": "优先级继承调试",
+    "input": "如何检测PI锁的优先级提升失效？",
+    "output": "诊断方法：\n1. CONFIG_DEBUG_PI_LIST=y\n2. trace-cmd记录sched_pi_setprio事件\n3. 检查/proc/lockdep_chains\n4. 使用lockdep验证死锁链"
+}
+{
+    "instruction": "跨CCX延迟测试",
+    "input": "如何测量Zen架构CCX间通信开销？",
+    "output": "测试方案：\n1. taskset绑定线程到不同CCX\n2. 使用lmbench lat_mem_rd测试\n3. 比较同CCX与跨CCX延迟\n4. 通过Ryzen Master观察Infinity Fabric使用率"
+}
+{
+    "instruction": "中断合并调优",
+    "input": "如何优化NVMe驱动中断合并参数？",
+    "output": "调整步骤：\n1. ethtool -C eth0 rx-usecs 64\n2. 设置/sys/class/nvme/nvme0/queue_count\n3. 启用MSI-X多队列\n4. 监控/proc/interrupts分布均匀性"
+}
+{
+    "instruction": "能效核调度",
+    "input": "Windows如何识别混合架构能效核？",
+    "output": "识别方法：\n1. 调用GetSystemCpuSetInformation\n2. 检查CpuSet->EfficiencyClass字段\n3. 使用SetThreadSelectedCpuSets绑定\n4. 查看任务管理器核心类型标记"
+}
+{
+    "instruction": "伪共享检测",
+    "input": "如何使用perf c2c定位缓存行竞争？",
+    "output": "分析流程：\n1. perf c2c record -a -- sleep 10\n2. perf c2c report --stdio\n3. 检查HITM指标高地址\n4. 根据偏移量定位结构体字段"
+}
+{
+    "instruction": "实时优先级设置",
+    "input": "如何为DPDK线程配置最高调度优先级？",
+    "output": "配置命令：\n1. taskset -c 1 dpdk-proc --lcores='(0-3)@90'\n2. 启动后执行：chrt -f -p 99 <pid>\n3. 设置isolcpus隔离目标核心"
+}
+{
+    "instruction": "调度带宽控制",
+    "input": "cgroups v2如何实现突发CPU配额？",
+    "output": "配置示例：\necho '150000 100000' > cpu.max\n表示：\n周期100ms内允许突发使用150ms CPU时间\n超出后限速到100ms/周期"
+}
+{
+    "instruction": "双字CAS实现",
+    "input": "x86如何实现128位原子比较交换？",
+    "output": "使用cmpxchg16b指令：\nasm volatile(\"lock cmpxchg16b %0\" : : \"m\"(*ptr), \"d\"(old_high), \"a\"(old_low), \"c\"(new_high), \"b\"(new_low))"
+}
+{
+    "instruction": "中断压力测试",
+    "input": "如何模拟极端中断负载场景？",
+    "output": "方法：\n1. 编写内核模块循环调用raise_softirq\n2. 使用stress-ng --irq 32 --irq-ops 1M\n3. 硬件触发：连接FPGA生成高频脉冲"
+}
+{
+    "instruction": "调度拓扑感知",
+    "input": "如何验证SMT调度域的正确划分？",
+    "output": "验证步骤：\n1. cat /sys/devices/system/cpu/smt/active\n2. lscpu -e查看核心拓扑\n3. perf c2c detect伪共享模式\n4. 跟踪sched_migrate_task事件"
+}
+{
+    "instruction": "预取抑制技术",
+    "input": "如何防止特定内存访问触发硬件预取？",
+    "output": "优化方法：\n1. 使用__builtin_prefetch(addr, 0, 0)\n2. 设置madvise(MADV_RANDOM)\n3. 插入mfence指令屏障\n4. 修改CR0寄存器禁用预取"
+}
+{
+    "instruction": "多核启动协议",
+    "input": "RISC-V多核启动如何实现原子同步？",
+    "output": "实现方案：\n1. 主核通过CLINT发送IPI\n2. 从核执行WFI等待中断\n3. 使用amo指令操作启动锁\n4. 检查设备树的CPU节点状态"
+}
+{
+    "instruction": "PCI中断调试",
+    "input": "如何验证MSI-X中断配置正确性？",
+    "output": "诊断方法：\n1. lspci -vvv查看MSI-X状态\n2. /proc/interrupts统计中断计数\n3. 设置pci=nomsi回退验证\n4. 使用devmem2读取MSI-X表"
+}
+{
+    "instruction": "时间片调优",
+    "input": "如何动态调整SCHED_RR默认时间片？",
+    "output": "内核参数：\necho 5000000 > /proc/sys/kernel/sched_rr_timeslice_ns\n验证：\nchrt -r -p <pid>查看time_slice字段"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "MESI协议中S状态有何特点？",
+    "output": "S(Shared)状态特性：\n1. 缓存行多核共享\n2. 内存数据为最新\n3. 可被随时置为Invalid\n转换场景：\n其他核读取同一缓存行时进入S状态"
+}
+{
+    "instruction": "中断线程分析",
+    "input": "如何跟踪irq_thread的唤醒延迟？",
+    "output": "方法：\n1. trace-cmd记录irq_thread_fn出入\n2. 计算wake_up_process到实际运行时间差\n3. 使用function_graph跟踪器\n4. 生成调度延迟火焰图"
+}
+{
+    "instruction": "调度域可视化",
+    "input": "如何生成调度域拓扑的图形表示？",
+    "output": "工具链：\n1. 安装schedtop\n2. schedtop -g > sched.dot\n3. 使用graphviz渲染：\ndot -Tsvg sched.dot -o sched.svg"
+}
+{
+    "instruction": "原子性验证",
+    "input": "如何测试128位原子操作的跨平台一致性？",
+    "output": "测试方案：\n1. 多线程竞争修改高低64位\n2. 使用校验和验证结果完整性\n3. 在x86/ARM/RISC-V架构运行\n4. 注入内存屏障模拟弱序执行"
+}
+{
+    "instruction": "延迟监控系统",
+    "input": "如何构建中断延迟实时监控平台？",
+    "output": "架构设计：\n1. eBPF收集irq_handler_entry/exit时间\n2. Prometheus存储时间序列数据\n3. Grafana展示延迟百分位数\n4. Alertmanager配置阈值告警"
+}
+{
+    "instruction": "环形缓冲区设计",
+    "input": "如何实现无锁缓存对齐环形队列？",
+    "output": "结构定义：\nstruct ring_buffer {\n    alignas(64) atomic_head;\n    alignas(64) atomic_tail;\n    elem_type buffer[N] alignas(64);\n};"
+}
+{
+    "instruction": "跨CCX优化",
+    "input": "如何减少Zen架构跨CCD内存访问？",
+    "output": "优化策略：\n1. numactl --membind绑定内存节点\n2. 启用自动NUMA平衡\n3. 设计数据分片减少跨域访问\n4. 监控L3缓存未命中率"
+}
+{
+    "instruction": "中断优先级配置",
+    "input": "如何动态调整GIC中断优先级？",
+    "output": "运行时配置：\n1. 计算优先级寄存器偏移：GICD_IPRIORITYR + irq/4\n2. 写入优先级值：devmem2 0xGICD_BASE+offset\n3. 验证：cat /proc/interrupts"
+}
+{
+    "instruction": "EDF调度验证",
+    "input": "如何测试SCHED_DEADLINE的全局EDF特性？",
+    "output": "测试方案：\n1. 创建多个dl任务设置不同period\n2. 使用deadline_test工具注入负载\n3. 监控/sys/kernel/debug/sched/deadline\n4. 验证任务是否满足截止期限"
+}
+{
+    "instruction": "矩阵预取优化",
+    "input": "如何优化GEMM计算的硬件预取？",
+    "output": "优化方法：\n1. 循环分块匹配缓存容量\n2. 预取下个分块首地址\n3. 使用非临时存储指令\n4. 设置madvise(MADV_SEQUENTIAL)"
+}
+{
+    "instruction": "跨NUMA测试",
+    "input": "如何测量跨节点原子操作吞吐量？",
+    "output": "基准测试：\n1. numactl --cpunodebind=0 --membind=1\n2. 循环执行atomic_fetch_add\n3. 使用perf统计每秒操作数\n4. 对比本地与远程访问差异"
+}
+{
+    "instruction": "中断绑定持久化",
+    "input": "如何永久保存IRQ亲和性设置？",
+    "output": "方案：\n1. 创建/etc/rc.local添加echo命令\n2. 使用irqbalance --oneshot\n3. 编写udev规则匹配设备\n示例：ACTION==\"add\", SUBSYSTEM==\"pci\", RUN+=\"/bin/echo 8 > /proc/irq/123/smp_affinity\""
+}
+{
+    "instruction": "镜像感知调度",
+    "input": "如何实现容器镜像感知的CPU分配？",
+    "output": "方案：\n1. 扩展cgroups添加镜像标签\n2. 调度器读取标签选择偏好核心\n3. 集成到K8s调度器插件\n示例：AI镜像分配至AVX512核心"
+}
+{
+    "instruction": "缓存竞争测试",
+    "input": "如何构造多级缓存竞争场景？",
+    "output": "测试程序：\n#pragma omp parallel\nfor(int i=0;i<STRIDE*N;i+=STRIDE)\n    arr[i]++;\n调整STRIDE参数触发L1/L2/L3竞争"
+}
+{
+    "instruction": "XDP零中断配置",
+    "input": "如何验证XDP程序的中断禁用？",
+    "output": "验证步骤：\n1. ethtool -k eth0查看rx-ntuple\n2. /proc/interrupts统计中断计数\n3. 使用bpftrace跟踪napi_poll\n4. 观察CPU利用率变化"
+}
+{
+    "instruction": "调度策略重置",
+    "input": "如何将实时进程恢复普通优先级？",
+    "output": "命令：\nchrt -o -p 0 <PID>\n代码实现：\nsched_setscheduler(pid, SCHED_NORMAL, &param);\n需CAP_SYS_NICE权限"
+}
+{
+    "instruction": "MOESI协议解析",
+    "input": "O状态如何优化多核写回效率？",
+    "output": "优化机制：\n1. 允许多核共享脏缓存行\n2. 只有Owner核负责最终写回\n3. 减少总线写回流量\n转换路径：\nModified->Owner当响应其他核读请求"
+}
+{
+    "instruction": "中断栈回溯",
+    "input": "如何捕获NMI中断的完整调用链？",
+    "output": "方法：\n1. echo 1 > /proc/sys/kernel/panic_on_unrecovered_nmi\n2. 触发NMI watchdog\n3. crash工具分析vmcore\n4. bt -f显示所有中断栈帧"
+}
+{
+    "instruction": "cgroups监控",
+    "input": "如何实时显示cgroup CPU使用率？",
+    "output": "工具：\n1. systemd-cgtop\n2. cgrp-top（第三方）\n3. 编写BPF程序统计cpuacct.usage\n示例：bpftrace -e 'profile:hz:99 { @[cgroup] = count(); }'"
+}
+{
+    "instruction": "内存序控制",
+    "input": "ARM64如何实现消费-生产内存序？",
+    "output": "指令组合：\n生产端：\nstlr x0, [x1] // Release存储\n消费端：\nldar x2, [x3] // Acquire加载\n自动插入DMB屏障保证顺序"
+}
+{
+    "instruction": "QPI带宽测试",
+    "input": "如何测量Intel QPI最大有效带宽？",
+    "output": "使用Intel MLC：\nmlc --loaded_latency -d0\n测试模式：\n所有对等读/跨NUMA节点写\n结果包含带宽(GB/s)和延迟(ns)"
+}
+{
+    "instruction": "USB中断调优",
+    "input": "如何优化USB3.x控制器中断处理？",
+    "output": "优化步骤：\n1. echo 1 > /proc/irq/<IRQ>/smp_affinity\n2. chrt -f 50 -p <IRQ_thread_pid>\n3. 设置usbcore.autosuspend=-1\n4. 启用MSI-X中断模式"
+}
+{
+    "instruction": "BATCH策略分析",
+    "input": "如何检测SCHED_BATCH的调度特征？",
+    "output": "分析方法：\n1. perf sched map查看调度分布\n2. 监控/proc/<pid>/sched的nr_switches\n3. 对比与SCHED_OTHER的上下文切换开销\n4. 使用schedstat工具"
+}
+{
+    "instruction": "伪共享定位",
+    "input": "如何使用Valgrind检测缓存行竞争？",
+    "output": "命令：\nvalgrind --tool=cachegrind --cache-sim=yes ./program\n分析输出：\n查看D1mr/D1mw统计定位热点\n使用cg_annotate生成源码级报告"
+}
+{
+    "instruction": "跨NUMA锁优化",
+    "input": "如何设计低延迟的跨节点自旋锁？",
+    "output": "设计方案：\n1. 层次化票号锁（Node Level）\n2. 基于RDMA原子操作\n3. 结合CLWB刷新远程缓存\n4. 采用指数退避减少争用"
+}
+{
+    "instruction": "中断迁移优化",
+    "input": "如何减少虚拟机中断注入延迟？",
+    "output": "优化措施：\n1. 启用Posted Interrupt\n2. 配置APICv虚拟化\n3. 绑定vCPU到物理核\n4. 使用VMFUNC快速切换地址空间"
+}
+
+{
+    "instruction": "调度延迟跟踪",
+    "input": "如何实时监测CFS调度器的选择延迟？",
+    "output": "方法：\n1. 使用trace-cmd记录sched_pick_next事件\n2. 查看/sys/kernel/debug/sched/latency_ns统计\n3. 编写BPF程序挂钩pick_next_task_fair\n4. 结合perf sched timehist分析时间线"
+}
+{
+    "instruction": "中断栈保护",
+    "input": "x86如何防止中断栈溢出？",
+    "output": "防护机制：\n1. 内核页表隔离（KPTI）创建专用中断栈\n2. 使用guard page检测越界访问\n3. 异常时触发crashdump保存栈回溯\n4. 配置CONFIG_VMAP_STACK使用虚拟映射栈"
+}
+{
+    "instruction": "原子操作扩展",
+    "input": "ARMv8.1-LSE如何优化原子操作吞吐量？",
+    "output": "改进特性：\n1. 单指令实现原子加减/交换（cas/casp）\n2. 支持8/16/32/64位操作\n3. 减少缓存行总线锁定\n性能提升：对比LL/SC吞吐量提升5-7倍"
+}
+{
+    "instruction": "NUMA感知调度",
+    "input": "如何验证自动NUMA页迁移效果？",
+    "output": "诊断方法：\n1. numactl -H查看节点分布\n2. perf stat -e numa_balancing_migrate\n3. 跟踪migrate_misplaced_page事件\n4. 使用numa_maps分析进程内存分布"
+}
+{
+    "instruction": "中断嵌套监控",
+    "input": "如何记录中断处理的最大嵌套层级？",
+    "output": "内核模块方案：\n1. 挂钩do_IRQ入口维护percpu计数器\n2. debugfs暴露/proc/irq_nesting_level\n3. 超过阈值时触发warn_on_once\n4. 支持动态阈值调整接口"
+}
+{
+    "instruction": "缓存分区调试",
+    "input": "如何实时监控Intel CAT缓存掩码冲突？",
+    "output": "使用pqos工具：\n1. pqos -I -c显示所有CLOS分配\n2. pqos -R resctrl.ctrl查看重叠检测\n3. pqos -e 'llc:1=0x00ff;llc:2=0xff00'设置正交掩码\n4. 警报机制检测超额订阅"
+}
+{
+    "instruction": "优先级继承追踪",
+    "input": "如何跟踪实时互斥锁的优先级提升过程？",
+    "output": "调试方法：\n1. CONFIG_DEBUG_RT_MUTEXES=y\n2. trace-cmd记录rt_mutex事件\n3. 检查/sys/kernel/debug/rt_mutex\n4. 使用lockdep验证继承链正确性"
+}
+{
+    "instruction": "跨CCX延迟测试",
+    "input": "如何精确测量Zen3架构CCD间通信开销？",
+    "output": "测试方案：\n1. taskset绑定线程到不同CCD\n2. 使用lmbench lat_mem_rd -P 1测试\n3. 通过Ryzen Master监控Infinity Fabric利用率\n4. 比较L3缓存未命中率差异"
+}
+{
+    "instruction": "中断合并调优",
+    "input": "如何优化NVMe-TCP驱动中断合并参数？",
+    "output": "优化步骤：\n1. ethtool -C eth0 rx-usecs 32\n2. 设置/sys/class/nvme/nvme0/queue_count匹配CPU核心数\n3. 启用ntuple过滤分散中断\n4. 监控irqbalance状态避免冲突"
+}
+{
+    "instruction": "混合架构调度",
+    "input": "Windows如何识别Intel混合架构能效核？",
+    "output": "识别方法：\n1. 调用GetLogicalProcessorInformationEx\n2. 检查CACHE_RELATIONSHIP的GroupMask\n3. 使用SetThreadSelectedCpuSets绑定P核\n4. 验证任务管理器核心类型标记"
+}
+{
+    "instruction": "伪共享检测",
+    "input": "如何利用perf c2c定位跨核缓存行争用？",
+    "output": "分析流程：\n1. perf c2c record -a -g -- sleep 30\n2. perf c2c report --stdio -g graph,caller\n3. 检查HITM高发地址及调用链\n4. 结合源码偏移定位冲突变量"
+}
+{
+    "instruction": "实时优先级配置",
+    "input": "如何为Xenomai实时线程设置最高优先级？",
+    "output": "配置步骤：\n1. 使用pthread_attr_setinheritsched设置显式策略\n2. pthread_attr_setschedparam设置优先级99\n3. 绑定线程到isolcpus隔离核\n4. 验证/proc/xenomai/sched显示实时状态"
+}
+{
+    "instruction": "弹性带宽控制",
+    "input": "cgroups v2如何实现突发带宽预留？",
+    "output": "配置示例：\necho '200000 100000' > cpu.max\n参数说明：\n周期100ms内允许200ms突发使用\n超额后限速至100ms/周期"
+}
+{
+    "instruction": "双字原子操作",
+    "input": "x86如何实现跨缓存行原子访问？",
+    "output": "限制与方案：\n1. 常规指令不支持跨缓存行原子性\n2. 使用seqlock+重试机制保证数据一致性\n3. 设计数据结构对齐缓存行\n4. 事务内存（TSX）实现多位置原子性"
+}
+{
+    "instruction": "中断压力测试",
+    "input": "如何模拟超高频中断(>1MHz)场景？",
+    "output": "硬件方案：\n1. FPGA生成精确时序脉冲\n2. 连接GPIO引脚触发外部中断\n软件模拟：\n1. 内核模块调用__raise_softirq_irqoff\n2. 配置HRTIMER_CB_SOFTIRQ定时器"
+}
+{
+    "instruction": "调度拓扑验证",
+    "input": "如何检测SMT调度域划分正确性？",
+    "output": "验证方法：\n1. lscpu -e查看核心拓扑\n2. perf stat -e sched:sched_move_numa\n3. 跟踪sched_migrate_task事件\n4. 强制任务迁移观察CPU选择逻辑"
+}
+{
+    "instruction": "预取抑制技术",
+    "input": "如何禁用特定内存区域的硬件预取？",
+    "output": "x86方法：\n1. 设置PAT表项为UC（Uncacheable）\n2. 使用movnti指令流式存储\n3. 通过CR0.CD禁用缓存\n4. madvise(MADV_DONTNEED)释放预取"
+}
+{
+    "instruction": "多核启动同步",
+    "input": "RISC-V如何实现安全的多核启动协议？",
+    "output": "安全方案：\n1. 主核初始化可信执行环境\n2. 加密签名从核启动代码\n3. 使用PMP保护共享启动锁\n4. 通过CLINT发送安全IPI唤醒"
+}
+{
+    "instruction": "MSI-X配置验证",
+    "input": "如何调试PCIe设备MSI-X中断丢失？",
+    "output": "诊断步骤：\n1. lspci -vvv确认MSI-X启用\n2. 检查/proc/interrupts计数增长\n3. 设置pci=noaer禁用高级错误报告\n4. 使用trace-cmd跟踪handle_irq_event"
+}
+{
+    "instruction": "时间片动态调整",
+    "input": "如何根据负载自动调节SCHED_RR时间片？",
+    "output": "内核模块方案：\n1. 挂钩sched_rr_get_interval\n2. 根据运行队列长度动态计算timeslice\n3. 通过sysfs暴露调节参数\n4. 集成EAS能效模型决策"
+}
+{
+    "instruction": "缓存一致性协议",
+    "input": "AMD Zen4如何优化CCX间缓存一致性？",
+    "output": "优化特性：\n1. 升级Infinity Fabric 3.0协议\n2. 引入Data Fabric加速跨CCX通信\n3. 支持non-inclusive L3缓存策略\n4. 增强预取器跨CCX预取能力"
+}
+{
+    "instruction": "中断线程分析",
+    "input": "如何跟踪irq_thread的唤醒延迟？",
+    "output": "方法：\n1. trace-cmd记录irq_thread_fn出入\n2. 计算wake_up_process到实际运行时间差\n3. 使用function_graph跟踪器\n4. 生成调度延迟火焰图"
+}
+{
+    "instruction": "调度域可视化",
+    "input": "如何生成多级调度域拓扑图？",
+    "output": "工具链：\n1. 安装schedutils-debuginfo\n2. schedtop -g -l 3 > sched.dot\n3. 使用graphviz渲染：\ncirco -Tpng sched.dot -o sched.png"
+}
+{
+    "instruction": "原子操作验证",
+    "input": "如何测试跨平台128位原子操作正确性？",
+    "output": "测试方案：\n1. 多线程竞争高低64位字段\n2. 使用CRC32C校验结果完整性\n3. 在x86/ARM/RISC-V架构验证\n4. 注入内存屏障模拟弱序执行"
+}
+{
+    "instruction": "延迟监控平台",
+    "input": "如何构建中断延迟时序数据库？",
+    "output": "架构设计：\n1. eBPF收集irq_handler_entry/exit时间戳\n2. 通过Fluentd转发到InfluxDB\n3. Grafana配置百分位统计面板\n4. 集成AlertManager实现动态阈值告警"
+}
+{
+    "instruction": "环形缓冲区优化",
+    "input": "如何设计缓存友好的无锁环形队列？",
+    "output": "优化结构：\nstruct ring {\n    alignas(64) atomic<uint64_t> head;\n    alignas(64) atomic<uint64_t> tail;\n    alignas(64) T elements[N];\n    char padding[64 - (N*sizeof(T))%64];\n};"
+}
+{
+    "instruction": "跨CCD优化",
+    "input": "如何减少Zen4跨CCD内存访问延迟？",
+    "output": "优化策略：\n1. numactl --preferred绑定本地节点\n2. 启用透明大页减少TLB缺失\n3. 设计数据分片减少跨域访问\n4. 使用CLWB指令优化缓存回写"
+}
+{
+    "instruction": "中断优先级动态调整",
+    "input": "如何运行时修改GIC中断优先级？",
+    "output": "动态配置：\n1. 计算GICD_IPRIORITYR偏移：irq/4\n2. 使用devmem2修改寄存器值：\ndevmem2 0xGICD_BASE+offset w <value>\n3. 验证/proc/interrupts优先级生效"
+}
+{
+    "instruction": "EDF调度验证",
+    "input": "如何压力测试SCHED_DEADLINE调度器？",
+    "output": "测试方案：\n1. 创建多个dl任务设置不同period/runtime\n2. 使用deadline_test注入负载\n3. 监控/sys/kernel/debug/sched/deadline状态\n4. 验证饥饿任务是否触发带宽回收"
+}
+{
+    "instruction": "矩阵预取优化",
+    "input": "如何实现BLAS库的智能预取策略？",
+    "output": "优化方法：\n1. 循环展开结合软件预取\n2. 使用_mm_prefetch预取下个分块\n3. 调整GEMM分块尺寸匹配缓存\n4. 启用LIBATOMS_CACHELINE控制对齐"
+}
+{
+    "instruction": "跨NUMA原子操作",
+    "input": "如何测量跨节点原子操作吞吐量？",
+    "output": "基准测试：\n1. numactl --cpunodebind=0 --membind=1\n2. 循环执行atomic_fetch_add\n3. 使用perf统计每秒操作数\n4. 对比本地与远程访问差异"
+}
+{
+    "instruction": "中断绑定持久化",
+    "input": "如何实现IRQ亲和性的热插拔感知？",
+    "output": "方案：\n1. 编写udev规则匹配设备热插拔事件\n2. 通过irqbalance API动态调整\n3. 使用cpuset隔离保留核心\n4. 集成systemd守护进程管理状态"
+}
+{
+    "instruction": "容器调度优化",
+    "input": "如何实现镜像感知的CPU亲和性？",
+    "output": "实现路径：\n1. 扩展OCI运行时添加镜像标签\n2. 调度器解析标签选择偏好核心\n3. 集成到Kubernetes Device Plugin\n示例：TensorFlow镜像绑定至AI加速核心"
+}
+{
+    "instruction": "缓存竞争测试",
+    "input": "如何构造多级缓存压力测试场景？",
+    "output": "测试程序：\n#pragma omp parallel\nfor(i=0;i<N;i+=STRIDE) {\n    arr[i] = arr[i+OFFSET] + 1;\n}\n调整STRIDE/OFFSET触发不同级别争用"
+}
+{
+    "instruction": "XDP零中断验证",
+    "input": "如何确认XDP程序完全禁用中断？",
+    "output": "验证方法：\n1. ethtool -k eth0 | grep ntuple\n2. 监控/proc/interrupts计数静止\n3. 使用bpftrace跟踪napi_poll调用\n4. 观察软中断NET_RX统计"
+}
+{
+    "instruction": "调度策略重置",
+    "input": "如何批量恢复实时进程为普通策略？",
+    "output": "脚本方案：\n#!/bin/sh\nfor pid in $(pgrep -f realtime_tag); do\n    chrt -o -p 0 $pid\ndone\n验证：ps -eo pid,cls,cmd | grep -"
+}
+{
+    "instruction": "MOESI协议优化",
+    "input": "O状态如何提升多核写合并效率？",
+    "output": "优化机制：\n1. 允许多核持有脏缓存副本\n2. 仅Owner核负责最终写回\n3. 合并多个核的写操作\n4. 减少总线事务约30-50%"
+}
+{
+    "instruction": "NMI栈分析",
+    "input": "如何捕获NMI中断的完整调用链？",
+    "output": "方法：\n1. echo 1 > /proc/sys/kernel/unknown_nmi_panic\n2. 触发NMI watchdog\n3. crash工具分析vmcore\n4. bt -a显示所有CPU栈帧"
+}
+{
+    "instruction": "cgroups监控",
+    "input": "如何实现cgroup CPU使用率实时流？",
+    "output": "方案：\n1. 编写BPF程序挂钩sched_process_exit\n2. 按cgroup聚合task_runtime统计\n3. 通过Prometheus导出指标\n4. Grafana配置实时热度图"
+}
+{
+    "instruction": "内存序控制",
+    "input": "ARM64如何实现Release-Consume序？",
+    "output": "指令组合：\n生产端：\nstlr x0, [x1] // Release存储\n消费端：\nldapr x2, [x3] // Consume加载\n依赖地址的载入自动排序"
+}
+{
+    "instruction": "QPI延迟测试",
+    "input": "如何测量Intel QPI访问延迟分布？",
+    "output": "使用Intel MLC：\nmlc --latency_matrix\n输出结果：\n包含本地/跨节点访问延迟百分位数"
+}
+{
+    "instruction": "USB中断优化",
+    "input": "如何降低USB大容量存储中断延迟？",
+    "output": "优化步骤：\n1. echo 2 > /sys/module/usbcore/parameters/usbfs_memory_mb\n2. chrt -f 90 -p $(pgrep irq/uhci_hcd)\n3. 设置scsi_mod.use_blk_mq=1\n4. 启用UAS协议替代BOT"
+}
+{
+    "instruction": "BATCH策略分析",
+    "input": "如何检测SCHED_BATCH的调度特征？",
+    "output": "分析方法：\n1. perf sched map查看调度分布\n2. 监控/proc/<pid>/sched的nr_switches\n3. 对比与SCHED_OTHER的上下文切换开销\n4. 使用schedstat工具"
+}
+{
+    "instruction": "伪共享定位",
+    "input": "如何使用Valgrind检测缓存行竞争？",
+    "output": "命令：\nvalgrind --tool=cachegrind --cache-sim=yes ./program\n分析输出：\n查看D1mr/D1mw统计定位热点\n使用cg_annotate生成源码级报告"
+}
+{
+    "instruction": "跨NUMA锁优化",
+    "input": "如何实现低延迟的跨节点自旋锁？",
+    "output": "设计方案：\n1. 层次化票号锁（Node Level）\n2. 基于RDMA原子操作\n3. 结合CLWB刷新远程缓存\n4. 采用指数退避减少争用"
+}
+{
+    "instruction": "中断迁移优化",
+    "input": "如何减少虚拟机中断注入延迟？",
+    "output": "优化措施：\n1. 启用Posted Interrupt\n2. 配置APICv虚拟化\n3. 绑定vCPU到物理核\n4. 使用VMFUNC快速切换地址空间"
+}
