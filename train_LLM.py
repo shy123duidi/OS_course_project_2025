@@ -4,6 +4,7 @@
 !pip install unsloth
 !pip install bitsandbytes unsloth_zoo
 
+
 ## 加载预训练模型 ##
 !pip install unsloth
 from unsloth import FastLanguageModel  # 导入FastLanguageModel类，用来加载和使用模型
@@ -21,6 +22,7 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     load_in_4bit=load_in_4bit, # 使用4位量化
     # token="hf_...", # 如果需要访问授权模型，可以在这里填入密钥
 )
+
 
 ## 微调前测试 ##
 prompt_style = """以下是描述任务的指令，以及提供进一步上下文的输入。
@@ -61,7 +63,8 @@ response = tokenizer.batch_decode(outputs)
 print(response[0])
 # 打印生成的回答部分
 
-## 加载数据集
+
+## 加载数据集 ##
 # 定义一个用于格式化提示的多行字符串模板
 train_prompt_style = """以下是描述任务的指令，以及提供进一步上下文的输入。
 请写出一个适当完成请求的回答。
@@ -107,6 +110,7 @@ def formatting_prompts_func(examples):
   }
 dataset = dataset.map(formatting_prompts_func, batched = True)
 dataset["text"][0]
+
 
 ## 执行微调 ##
 FastLanguageModel.for_training(model)
@@ -157,6 +161,7 @@ trainer = SFTTrainer( # 创建一个SFTTrainer实例
 
 trainer_stats = trainer.train()
 
+
 ## 微调后测试 ##
 print(question) # 打印前面的问题
 
@@ -179,6 +184,7 @@ response = tokenizer.batch_decode(outputs)
 
 # 打印回答
 print(response[0])
+
 
 ## 将微调后的模型保存为GGUF格式 ##
 # 导入Google Colab的userdata模块，用于访问用户数据
